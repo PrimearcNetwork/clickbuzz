@@ -43,7 +43,7 @@ if [[ "${SKIP_BACKEND:-}" != "1" ]]; then
 
     if [[ "${SKIP_MIGRATE:-}" != "1" ]]; then
         echo "==> Migrations"
-        (cd backend && npm run --silent migrate:status && npm run --silent migrate)
+        (cd backend && NODE_ENV=production ENV_FILE=.env npm run --silent migrate:status && NODE_ENV=production ENV_FILE=.env npm run --silent migrate)
     fi
 
     echo "==> Restart backend"

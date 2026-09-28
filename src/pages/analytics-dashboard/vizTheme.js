@@ -32,5 +32,14 @@ export const CATEGORICAL_PALETTE = [
   '#e66767'  // red
 ];
 
-export const STATUS_GOOD = '#0ca30c';
-export const STATUS_CRITICAL = '#e66767';
+// Reserved status palette (dataviz skill references/palette.md) — used only
+// for payment state, always paired with an icon + text label, never for a
+// data series.
+export const STATUS_GOOD = '#0ca30c';     // successful
+export const STATUS_WARNING = '#fab219';  // pending
+export const STATUS_SERIOUS = '#ec835a';  // cancelled
+export const STATUS_CRITICAL = '#d03b3b'; // failed
+
+// Four-series order for the visitor trend chart (first four categorical
+// slots, validated on CHART_SURFACE in dark mode: all six checks pass).
+export const VISITOR_SERIES_COLORS = CATEGORICAL_PALETTE.slice(0, 4);

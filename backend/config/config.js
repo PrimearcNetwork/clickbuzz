@@ -1,10 +1,10 @@
 // sequelize-cli config — mirrors the same connection logic as db.config.js
 // (DATABASE_URL takes precedence over discrete DB_* vars) so migrations run
-// against the exact same database the app itself connects to. This project
-// has only one real database (the self-hosted VPS MySQL instance in backend/.env);
-// there's no separate per-NODE_ENV database, so all three blocks resolve the
-// same way.
-require('dotenv').config({ quiet: true });
+// against the exact same database the app itself connects to. Which database
+// that is comes from the env file config/loadEnv.js picks: backend/.env on
+// the VPS (production), backend/.env.development locally. All three blocks
+// resolve the same way; the env file, not sequelize's NODE_ENV block, decides.
+require('./loadEnv'); // same env-file rule as the app (backend/.env vs .env.development)
 
 const sslOptions = process.env.DB_SSL === 'true'
     ? { ssl: { require: true, rejectUnauthorized: false } }

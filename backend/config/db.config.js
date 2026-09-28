@@ -1,4 +1,4 @@
-require('dotenv').config({ quiet: true });
+require('./loadEnv');
 const { Sequelize } = require('sequelize');
 
 // Shared across both connection branches below — previously only the

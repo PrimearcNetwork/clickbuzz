@@ -23,7 +23,9 @@ const os = require('os');
 // it's frozen after that.
 cluster.schedulingPolicy = cluster.SCHED_RR;
 
-require('dotenv').config({ quiet: true });
+// Picks backend/.env (production, NODE_ENV=production via PM2) or
+// backend/.env.development (local) — see config/loadEnv.js.
+require('./config/loadEnv');
 
 const PORT = process.env.PORT || 5000;
 // Optional bind address. Production (VPS) sets BIND_HOST=127.0.0.1 so Node is
@@ -87,7 +89,7 @@ function warnOnProductionConfig() {
 }
 
 if (cluster.isPrimary) {
-    console.log(`Primary ${process.pid} starting ${numWorkers} worker(s)...`);
+    console.log(`Primary ${process.pid} starting ${numWorkers} worker(s)... (env file: ${process.env.LOADED_ENV_FILE})`);
     warnOnProductionConfig();
 
     // The primary never serves HTTP (see the isPrimary/else split below) —

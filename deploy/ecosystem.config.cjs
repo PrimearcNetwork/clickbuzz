@@ -28,7 +28,10 @@ module.exports = {
             max_memory_restart: '1500M',
             time: true,
             env: {
+                // Both explicit here (never taken from backend/.env): together they make
+                // config/loadEnv.js load backend/.env — the production file.
                 NODE_ENV: 'production',
+                ENV_FILE: '.env',
                 // Nginx is the only public entry point.
                 BIND_HOST: '127.0.0.1',
                 PORT: 5000,

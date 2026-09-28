@@ -11,7 +11,7 @@
 //
 // Usage: node backend/scripts/downloadGeoDb.js  (or `npm run geo:update`)
 
-require('dotenv').config();
+require('../config/loadEnv');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');

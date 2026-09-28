@@ -5,6 +5,7 @@ const path = require('path');
 const morgan = require('morgan');
 const compression = require('compression');
 const requestLogger = require('./middleware/requestLogger.middleware');
+const { requireAdmin, requireAdminForWrites } = require('./middleware/adminSession.middleware');
 
 const app = express();
 // Don't advertise the framework in every response header.
@@ -47,7 +48,11 @@ app.use(cors({
         // it — not an Error, which would turn every such request into a 500
         // plus a stack trace in logs/error.log.
         return callback(null, !origin || allowedOrigins.includes(origin));
-    }
+    },
+    // Lets the /admin and /analytics dashboards send their httpOnly session
+    // cookie (see middleware/adminSession.middleware.js). Only ever sent
+    // back to the allow-listed origins above — never a wildcard.
+    credentials: true
 }));
 // `verify` stashes the exact raw request bytes on req.rawBody, alongside the
 // normal parsed req.body — needed by routes/payment.routes.js's webhook
@@ -89,25 +94,32 @@ app.get('/', (req, res) => {
 // demo-only now and lives entirely in the frontend (see src/hooks/useAuth.js).
 app.use('/api/legacy-auth', require('./routes/auth.routes'));
 app.use('/api/user', require('./routes/user.routes'));
-app.use('/api/movies', require('./routes/movie.routes'));
-app.use('/api/categories', require('./routes/category.routes'));
-app.use('/api/subscription-plans', require('./routes/subscriptionPlan.routes'));
-app.use('/api/settings-pages', require('./routes/settingsPage.routes'));
-app.use('/api/settings-menu', require('./routes/settingsMenu.routes'));
+// Admin/Analytics password gate (ADMIN_ACCESS_PASSWORD) — login/session/logout.
+// CMS routers below keep their public GETs; every write needs the admin session.
+app.use('/api/admin-auth', require('./routes/adminAuth.routes'));
+app.use('/api/movies', requireAdminForWrites, require('./routes/movie.routes'));
+app.use('/api/categories', requireAdminForWrites, require('./routes/category.routes'));
+app.use('/api/subscription-plans', requireAdminForWrites, require('./routes/subscriptionPlan.routes'));
+app.use('/api/settings-pages', requireAdminForWrites, require('./routes/settingsPage.routes'));
+app.use('/api/settings-menu', requireAdminForWrites, require('./routes/settingsMenu.routes'));
 app.use('/api/admin', require('./routes/admin.routes'));
-app.use('/api/upload', require('./routes/upload.routes'));
-app.use('/api/master', require('./routes/master.routes'));
-app.use('/api/hero-banners', require('./routes/heroBanner.routes'));
-app.use('/api/trays', require('./routes/tray.routes'));
+app.use('/api/upload', requireAdminForWrites, require('./routes/upload.routes'));
+app.use('/api/master', requireAdminForWrites, require('./routes/master.routes'));
+app.use('/api/hero-banners', requireAdminForWrites, require('./routes/heroBanner.routes'));
+app.use('/api/trays', requireAdminForWrites, require('./routes/tray.routes'));
 app.use('/api/payments', require('./routes/payment.routes'));
-app.use('/api/site-settings', require('./routes/siteSetting.routes'));
+app.use('/api/site-settings', requireAdminForWrites, require('./routes/siteSetting.routes'));
 
 // Website Analytics System (see CLAUDE.md §23) — deliberately isolated from
 // /api/admin: its own model files (models/analytics/), controllers
 // (controllers/analytics/), and this one route mount. No auth middleware
 // here, consistent with most other routes in this codebase (see CLAUDE.md
 // §6/§17) — flagged, not assumed acceptable; add gating later if desired.
-app.use('/api/analytics', require('./routes/analytics.routes'));
+// The tracking beacon (POST /collect) stays public — every visitor sends it.
+// Everything else here is the analytics dashboard and needs the admin session.
+app.use('/api/analytics', (req, res, next) =>
+    (req.method === 'POST' && req.path === '/collect') ? next() : requireAdmin(req, res, next),
+    require('./routes/analytics.routes'));
 
 // Global Error Handler — every controller already wraps its own try/catch
 // and responds directly (see CLAUDE.md §13), so this is a backstop for

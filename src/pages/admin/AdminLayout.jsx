@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
+import { adminLogout } from '../../services/adminSession';
 import {
   Menu, X, Users, LogOut,
   CreditCard, ChevronDown, ChevronRight, Settings,
@@ -147,7 +148,7 @@ const AdminLayout = () => {
         </div>
 
         <div className="p-4 border-t border-gray-800/50 shrink-0">
-          <Link to="/" className="flex items-center space-x-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors font-medium">
+          <Link to="/" onClick={adminLogout} className="flex items-center space-x-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors font-medium">
             <LogOut size={20} />
             <span>Exit Admin</span>
           </Link>

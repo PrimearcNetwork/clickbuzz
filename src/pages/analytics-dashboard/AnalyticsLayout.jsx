@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
+import { adminLogout } from '../../services/adminSession';
 import { Menu, X, LayoutDashboard, Users, LogOut, BarChart3 } from 'lucide-react';
 
 // Standalone shell for the analytics module (see CLAUDE.md §23) — visually
@@ -60,7 +61,7 @@ const AnalyticsLayout = () => {
         </div>
 
         <div className="p-4 border-t border-white/10 shrink-0">
-          <Link to="/" className="flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors font-medium text-sm">
+          <Link to="/" onClick={adminLogout} className="flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors font-medium text-sm">
             <LogOut size={18} />
             <span>Exit Analytics</span>
           </Link>

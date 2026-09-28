@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
 import ProtectedRoute from './components/ProtectedRoute';
+import AdminGate from './components/AdminGate';
 import { PremiumModalProvider } from './context/PremiumModalContext';
 import AnalyticsBoundary from './analytics/AnalyticsBoundary';
 import MetaPixelBoundary from './analytics/MetaPixelBoundary';
@@ -61,7 +62,7 @@ function App() {
         <Suspense fallback={<RouteFallback />}>
         <Routes>
           {/* Analytics Dashboard - Standalone, isolated from /admin (see CLAUDE.md §23) */}
-          <Route path="/analytics" element={<AnalyticsLayout />}>
+          <Route path="/analytics" element={<AdminGate><AnalyticsLayout /></AdminGate>}>
             <Route index element={<AnalyticsOverview />} />
             <Route path="visitors" element={<AnalyticsVisitors />} />
             <Route path="visitors/:visitorId" element={<AnalyticsVisitorDetail />} />
@@ -95,7 +96,7 @@ function App() {
           <Route path="/admin/login" element={<AdminLogin />} />
 
           {/* Admin Routes - Standalone Layout */}
-          <Route path="/admin" element={<AdminLayout />}>
+          <Route path="/admin" element={<AdminGate><AdminLayout /></AdminGate>}>
             <Route index element={<Navigate to="hero-banners" replace />} />
             <Route path="movies" element={<AdminMovies />} />
             <Route path="hero-banners" element={<AdminHeroBanners />} />

@@ -72,7 +72,7 @@ const perWorkerPoolMax = Math.max(5, Math.floor(TOTAL_DB_POOL_BUDGET / numWorker
 function warnOnProductionConfig() {
     if (process.env.NODE_ENV !== 'production') return;
     const warn = (msg) => console.warn(`[config] WARNING: ${msg}`);
-    const required = ['JWT_SECRET', 'RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET', 'ANALYTICS_IP_HASH_SALT', 'RABBITMQ_URL'];
+    const required = ['JWT_SECRET', 'RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET', 'ANALYTICS_IP_HASH_SALT', 'RABBITMQ_URL', 'ADMIN_ACCESS_PASSWORD'];
     for (const name of required) {
         if (!process.env[name]) warn(`${name} is not set`);
     }

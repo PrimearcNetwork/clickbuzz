@@ -20,13 +20,19 @@ const MAX_POLLS = 10; // ~30 seconds
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const CADENCE_LABEL = { DAILY: 'day', WEEKLY: 'week', MONTHLY: 'month', YEARLY: 'year' };
+// Cycles offered on Explore Plans, in display order.
+const OFFERED_CYCLES = ['WEEKLY', 'MONTHLY'];
+const cycleOf = (plan) => (plan.billing_cycle || '').toUpperCase();
 
-// "199.00" -> "199", "9.99" -> "9.99"
-const formatPrice = (value) => {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return String(value ?? '');
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+// First active plan per offered cycle (Weekly, then Monthly). Falls back to
+// the recommended / first active plan if neither cycle exists.
+const pickOfferedPlans = (data) => {
+  const offered = OFFERED_CYCLES
+    .map((cycle) => data.find((p) => cycleOf(p) === cycle))
+    .filter(Boolean);
+  if (offered.length > 0) return offered;
+  const fallback = data.find((p) => p.is_recommended) || data[0];
+  return fallback ? [fallback] : [];
 };
 
 const PAY_BUTTON_CLASS =
@@ -67,12 +73,12 @@ const PlansPage = () => {
       .catch((err) => console.error('Background settings fetch failed:', err));
   }, []);
 
-  // Explore Plans shows a single plan — the Monthly one — falling back to the
-  // recommended plan, then the first active plan, if no Monthly plan exists.
+  // Explore Plans offers the Weekly and Monthly plans; Monthly is
+  // pre-selected and the user can switch before tapping Pay Now.
   const selectPlan = (data) => {
-    const monthly = data.find((p) => (p.billing_cycle || '').toUpperCase() === 'MONTHLY');
-    const recommended = data.find((p) => p.is_recommended);
-    setSelectedPlan(monthly?.id ?? recommended?.id ?? data[0]?.id ?? null);
+    const offered = pickOfferedPlans(data);
+    const monthly = offered.find((p) => cycleOf(p) === 'MONTHLY');
+    setSelectedPlan((monthly || offered[0])?.id ?? null);
   };
 
   const fetchPlans = () => {
@@ -289,10 +295,9 @@ const PlansPage = () => {
   // Plan list failed to load (or came back empty): nothing to pay for, so
   // show the "couldn't load" state with a retry instead.
   const noPlanAvailable = !loading && !selectedPlan;
-  const plan = plans.find((p) => p.id === selectedPlan);
-
-  const priceLabel = plan ? formatPrice(plan.original_price) : '';
-  const cadence = plan ? (CADENCE_LABEL[(plan.billing_cycle || '').toUpperCase()] || 'month') : 'month';
+  const offeredPlans = pickOfferedPlans(plans);
+  // Plan choice is locked while a payment is in flight.
+  const selectionLocked = ['creating', 'checkout_open', 'confirming'].includes(paymentPhase);
   // Admin-uploaded banner if set (mobile/desktop art direction), otherwise the
   // built-in default banner.
   const bannerSrc = background.desktop || background.mobile || defaultBanner;
@@ -343,18 +348,46 @@ const PlansPage = () => {
             </div>
           ) : (
             <>
-              {plan && (
-                <div
-                  data-testid={`plan-option-${plan.id}`}
-                  data-selected="true"
-                  className="flex flex-col items-center text-center mb-8"
-                >
-                  <p className="text-brand font-bold text-2xl underline decoration-2 underline-offset-8">
-                    {plan.name} Plan at ₹{priceLabel}
-                  </p>
-                  <p className="text-gray-300 text-base mt-4">Billed as ₹{priceLabel}/{cadence}</p>
-                </div>
-              )}
+              {/* Plan picker — one full-width row per plan, radio on the left,
+                  price on the right. */}
+              <div role="radiogroup" aria-label="Choose a plan" className="w-full flex flex-col gap-4 mb-8">
+                {offeredPlans.map((p) => {
+                  const selected = p.id === selectedPlan;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      data-testid={`plan-option-${p.id}`}
+                      data-selected={selected ? 'true' : 'false'}
+                      disabled={selectionLocked}
+                      onClick={() => setSelectedPlan(p.id)}
+                      className={
+                        'w-full flex items-center gap-3 rounded-xl border px-4 py-4 sm:px-5 sm:py-5 text-left ' +
+                        'transition-colors cursor-pointer disabled:cursor-not-allowed ' +
+                        (selected
+                          ? 'border-brand bg-brand/10'
+                          : 'border-gray-700 bg-transparent hover:border-gray-500')
+                      }
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={
+                          'shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center ' +
+                          (selected ? 'border-brand' : 'border-gray-400')
+                        }
+                      >
+                        {selected && <span className="w-2 h-2 rounded-full bg-brand" />}
+                      </span>
+                      <span className="flex-1 min-w-0 text-white font-semibold text-base sm:text-lg truncate">{p.name}</span>
+                      <span className="shrink-0 text-white font-semibold text-base sm:text-lg whitespace-nowrap">
+                        ₹ {Number(p.original_price).toFixed(2)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
 
               {/* Payment status card — failed/cancelled/timeout */}
               {(paymentPhase === 'failed' || paymentPhase === 'cancelled' || paymentPhase === 'timeout') && (

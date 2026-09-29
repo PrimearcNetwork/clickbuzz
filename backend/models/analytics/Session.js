@@ -44,6 +44,13 @@ const Session = sequelize.define('Session', {
         allowNull: false,
         defaultValue: false
     },
+    // True once any pageview in this session happened while the visitor had
+    // a login session (src/analytics/tracker.js sends `loggedIn`).
+    is_logged_in: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
     traffic_source: { type: DataTypes.STRING, allowNull: true },
     referrer_url: { type: DataTypes.TEXT, allowNull: true },
     referrer_domain: { type: DataTypes.STRING, allowNull: true },

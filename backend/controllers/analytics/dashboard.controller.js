@@ -1,7 +1,15 @@
 const { Op, fn, col, literal } = require('sequelize');
-const { Visitor, Session, AnalyticsSummary } = require('../../models');
-const { parseDateRange, todayStr } = require('../../utils/analytics/dateRange.util');
+const { Visitor, Session, AnalyticsSummary, Payment, sequelize } = require('../../models');
+const { parseDateRange, todayStr, addDaysStr } = require('../../utils/analytics/dateRange.util');
 const { computeDailySummary } = require('../../services/analytics/rollup.service');
+
+// Range bounds for raw SQL as plain UTC 'YYYY-MM-DD HH:MM:SS' strings.
+// (A JS Date passed as a raw-query replacement gets formatted in the server's
+// local timezone, which shifts the day window.)
+function rawSqlRange(query) {
+    const { from, to } = parseDateRange(query);
+    return { from: `${from} 00:00:00`, to: `${addDaysStr(to, 1)} 00:00:00` };
+}
 
 const ACTIVE_WINDOW_MS = 5 * 60 * 1000;
 const MAX_CONCURRENT_DAY_COMPUTATIONS = 3;
@@ -229,17 +237,214 @@ exports.getUtmCampaigns = async (req, res) => {
             raw: true
         });
 
+        // Content clicks and first-time checkouts made during each campaign's
+        // sessions (payments link to their session via analytics_session_id).
+        const replacements = rawSqlRange(req.query);
+        const [clickRows, paymentRows] = await Promise.all([
+            sequelize.query(
+                `SELECT s.utm_source, s.utm_medium, s.utm_campaign, COUNT(*) AS clicks
+                 FROM analytics_visitor_events e
+                 JOIN analytics_sessions s ON s.session_id = e.session_id
+                 WHERE e.event_name = 'content_click' AND s.utm_campaign IS NOT NULL
+                   AND s.started_at >= :from AND s.started_at < :to
+                 GROUP BY s.utm_source, s.utm_medium, s.utm_campaign`,
+                { replacements, type: sequelize.QueryTypes.SELECT }
+            ),
+            sequelize.query(
+                `SELECT s.utm_source, s.utm_medium, s.utm_campaign,
+                        COUNT(*) AS attempts,
+                        SUM(CASE WHEN p.status = 'success' THEN 1 ELSE 0 END) AS successful
+                 FROM payments p
+                 JOIN analytics_sessions s ON s.session_id = p.analytics_session_id
+                 WHERE p.payment_method = 'RAZORPAY' AND p.is_internal = false AND s.utm_campaign IS NOT NULL
+                   AND s.started_at >= :from AND s.started_at < :to
+                 GROUP BY s.utm_source, s.utm_medium, s.utm_campaign`,
+                { replacements, type: sequelize.QueryTypes.SELECT }
+            )
+        ]);
+        const keyOf = (row) => `${row.utm_source}|${row.utm_medium}|${row.utm_campaign}`;
+        const clicksByKey = new Map(clickRows.map((row) => [keyOf(row), Number(row.clicks) || 0]));
+        const paymentsByKey = new Map(paymentRows.map((row) => [keyOf(row), row]));
+
         return res.json({
-            data: rows.map((row) => ({
-                source: row.utm_source,
-                medium: row.utm_medium,
-                campaign: row.utm_campaign,
-                sessions: Number(row.sessions),
-                conversions: Number(row.conversions)
-            }))
+            data: rows.map((row) => {
+                const payments = paymentsByKey.get(keyOf(row));
+                return {
+                    source: row.utm_source,
+                    medium: row.utm_medium,
+                    campaign: row.utm_campaign,
+                    sessions: Number(row.sessions),
+                    conversions: Number(row.conversions),
+                    contentClicks: clicksByKey.get(keyOf(row)) || 0,
+                    paymentAttempts: Number(payments?.attempts) || 0,
+                    successfulPayments: Number(payments?.successful) || 0
+                };
+            })
         });
     } catch (err) {
         console.error('Error fetching UTM campaign performance:', err);
         return res.status(500).json({ message: 'Server error fetching UTM campaign performance' });
+    }
+};
+
+// Real payment numbers per day (UTC, same day boundaries as the rest of the
+// dashboard) from the `payments` table. First-time checkouts
+// (payment_method 'RAZORPAY') are the funnel's attempts/outcomes; automatic
+// renewals ('RAZORPAY_AUTOPAY') are reported separately so they never count
+// as a visitor "attempting" to pay.
+exports.getPayments = async (req, res) => {
+    try {
+        const { sequelizeRange } = parseDateRange(req.query);
+
+        const rows = await Payment.findAll({
+            attributes: [
+                [fn('DATE', col('created_at')), 'date'],
+                'payment_method',
+                'status',
+                [fn('COUNT', col('id')), 'count'],
+                [fn('SUM', col('amount')), 'amount']
+            ],
+            // Team/owner test checkouts (payments.is_internal) never count.
+            where: { created_at: sequelizeRange, is_internal: false },
+            group: [fn('DATE', col('created_at')), 'payment_method', 'status'],
+            raw: true
+        });
+
+        const byDate = new Map();
+        const dayFor = (date) => {
+            if (!byDate.has(date)) {
+                byDate.set(date, {
+                    date,
+                    paymentAttempts: 0,
+                    successfulPayments: 0,
+                    failedPayments: 0,
+                    pendingPayments: 0,
+                    cancelledPayments: 0,
+                    revenue: 0,
+                    renewals: 0,
+                    renewalRevenue: 0
+                });
+            }
+            return byDate.get(date);
+        };
+
+        for (const row of rows) {
+            // DATE() comes back as a Date or a 'YYYY-MM-DD' string depending on the driver.
+            const date = row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date).slice(0, 10);
+            const day = dayFor(date);
+            const count = Number(row.count) || 0;
+            const amount = Number(row.amount) || 0;
+
+            if (row.payment_method === 'RAZORPAY_AUTOPAY') {
+                if (row.status === 'success') {
+                    day.renewals += count;
+                    day.renewalRevenue += amount;
+                }
+                continue;
+            }
+
+            day.paymentAttempts += count;
+            if (row.status === 'success') {
+                day.successfulPayments += count;
+                day.revenue += amount;
+            } else if (row.status === 'failed') {
+                day.failedPayments += count;
+            } else if (row.status === 'cancelled') {
+                day.cancelledPayments += count;
+            } else {
+                day.pendingPayments += count;
+            }
+        }
+
+        const series = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+        // People (distinct phone numbers) rather than attempts, for the funnel.
+        const [people] = await Payment.findAll({
+            attributes: [
+                [fn('COUNT', fn('DISTINCT', col('customer_phone'))), 'attemptedPeople'],
+                [fn('COUNT', fn('DISTINCT', literal("CASE WHEN status = 'success' THEN customer_phone END"))), 'paidPeople']
+            ],
+            where: { created_at: sequelizeRange, is_internal: false, payment_method: 'RAZORPAY' },
+            raw: true
+        });
+
+        return res.json({
+            series,
+            totals: {
+                attemptedPeople: Number(people?.attemptedPeople) || 0,
+                paidPeople: Number(people?.paidPeople) || 0
+            }
+        });
+    } catch (err) {
+        console.error('Error fetching payment analytics:', err);
+        return res.status(500).json({ message: 'Server error fetching payment analytics' });
+    }
+};
+
+// Real audience/engagement numbers per UTC day plus de-duplicated totals for
+// the whole range:
+//   loggedInUsers   visitors with a session that had a login session
+//   utmVisits       sessions that arrived with any UTM parameter
+//   contentClicks   'content_click' events (movie/player links, see
+//                   src/analytics/contentClickTracking.js)
+//   engagedVisitors visitors with at least one content click
+exports.getEngagement = async (req, res) => {
+    try {
+        const replacements = rawSqlRange(req.query);
+        const select = (sql) => sequelize.query(sql, { replacements, type: sequelize.QueryTypes.SELECT });
+        const hasUtm = 'COALESCE(utm_source, utm_medium, utm_campaign) IS NOT NULL';
+
+        const [sessionDays, clickDays, [sessionTotals], [clickTotals]] = await Promise.all([
+            select(`SELECT DATE(started_at) AS date,
+                           COUNT(*) AS visits,
+                           SUM(CASE WHEN ${hasUtm} THEN 1 ELSE 0 END) AS utmVisits,
+                           COUNT(DISTINCT CASE WHEN is_logged_in THEN visitor_id END) AS loggedInUsers
+                    FROM analytics_sessions
+                    WHERE started_at >= :from AND started_at < :to
+                    GROUP BY DATE(started_at)`),
+            select(`SELECT DATE(created_at) AS date,
+                           COUNT(*) AS contentClicks,
+                           COUNT(DISTINCT visitor_id) AS engagedVisitors
+                    FROM analytics_visitor_events
+                    WHERE event_name = 'content_click' AND created_at >= :from AND created_at < :to
+                    GROUP BY DATE(created_at)`),
+            select(`SELECT COUNT(DISTINCT CASE WHEN is_logged_in THEN visitor_id END) AS loggedInUsers
+                    FROM analytics_sessions
+                    WHERE started_at >= :from AND started_at < :to`),
+            select(`SELECT COUNT(DISTINCT visitor_id) AS engagedVisitors
+                    FROM analytics_visitor_events
+                    WHERE event_name = 'content_click' AND created_at >= :from AND created_at < :to`)
+        ]);
+
+        const toDateStr = (value) => (value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10));
+        const byDate = new Map();
+        const dayFor = (date) => {
+            if (!byDate.has(date)) {
+                byDate.set(date, { date, loggedInUsers: 0, utmVisits: 0, nonUtmVisits: 0, contentClicks: 0, engagedVisitors: 0 });
+            }
+            return byDate.get(date);
+        };
+        for (const row of sessionDays) {
+            const day = dayFor(toDateStr(row.date));
+            day.loggedInUsers = Number(row.loggedInUsers) || 0;
+            day.utmVisits = Number(row.utmVisits) || 0;
+            day.nonUtmVisits = (Number(row.visits) || 0) - day.utmVisits;
+        }
+        for (const row of clickDays) {
+            const day = dayFor(toDateStr(row.date));
+            day.contentClicks = Number(row.contentClicks) || 0;
+            day.engagedVisitors = Number(row.engagedVisitors) || 0;
+        }
+
+        return res.json({
+            series: Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date)),
+            totals: {
+                loggedInUsers: Number(sessionTotals?.loggedInUsers) || 0,
+                engagedVisitors: Number(clickTotals?.engagedVisitors) || 0
+            }
+        });
+    } catch (err) {
+        console.error('Error fetching engagement analytics:', err);
+        return res.status(500).json({ message: 'Server error fetching engagement analytics' });
     }
 };

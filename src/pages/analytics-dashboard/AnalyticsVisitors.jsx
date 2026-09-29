@@ -9,10 +9,10 @@ function toISODate(date) {
   return date.toISOString().slice(0, 10);
 }
 
+// Opens on "Today" (same dates as the Today preset in DateRangeFilter).
 function defaultRange() {
-  const to = new Date();
-  const from = new Date(to.getTime() - 29 * 24 * 60 * 60 * 1000);
-  return { from: toISODate(from), to: toISODate(to) };
+  const today = toISODate(new Date());
+  return { from: today, to: today };
 }
 
 function formatDuration(totalSeconds) {

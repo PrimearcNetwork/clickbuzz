@@ -53,7 +53,6 @@ const MultiSeriesTrendChart = ({ data, series, totals = {}, height = 300 }) => {
               {totals[s.key] !== undefined ? (
                 <span className="text-white font-medium tabular-nums">{Number(totals[s.key]).toLocaleString('en-IN')}</span>
               ) : null}
-              {s.sample ? <span className="text-[10px] text-[#898781]">(sample)</span> : null}
             </button>
           );
         })}

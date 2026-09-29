@@ -101,7 +101,7 @@ const AdminMovies = () => {
 
   if (showForm) {
     return (
-      <div className="w-full h-auto md:h-full flex flex-col font-sans">
+      <div className="w-full flex flex-col font-sans">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl md:text-2xl font-normal text-white uppercase tracking-wide">
             {editingMovie ? 'Edit Show' : 'Add New Show'}
@@ -116,7 +116,7 @@ const AdminMovies = () => {
   }
 
   return (
-    <div className="w-full h-auto md:h-full flex flex-col font-sans">
+    <div className="w-full flex flex-col font-sans">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <h2 className="text-xl md:text-2xl font-normal text-white uppercase tracking-wide">
@@ -131,7 +131,7 @@ const AdminMovies = () => {
       </div>
 
       {/* Main Content Area */}
-      <div className="bg-[#121826] rounded-xl border border-gray-800 flex-1 flex flex-col overflow-hidden">
+      <div className="bg-[#121826] rounded-xl border border-gray-800 flex flex-col overflow-hidden">
         
         {/* Controls Bar */}
         <div className="p-5 border-b border-gray-800/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -157,7 +157,7 @@ const AdminMovies = () => {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto custom-scrollbar flex-1">
+        <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-left text-sm text-gray-300 whitespace-nowrap min-w-[1200px]">
             <thead className="bg-[#1a2235] text-gray-400 font-semibold text-xs tracking-wider border-b border-gray-800">
               <tr>

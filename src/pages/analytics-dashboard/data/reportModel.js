@@ -1,129 +1,111 @@
-// Frontend data model for the Analytics overview.
+// Frontend data model for the Analytics overview. Every number is real.
 //
 // One daily row per date:
 //   { date, visitors, uniqueVisitors, loggedInUsers, guestUsers, utmVisitors,
 //     nonUtmVisitors, contentClicks, engagedVisitors, paymentAttempts,
 //     successfulPayments, failedPayments, pendingPayments, cancelledPayments,
-//     revenue }
+//     revenue, renewals, renewalRevenue }
 //
-// REAL fields come from the existing /api/analytics/dashboard/trend response:
-//   visitors        <- sessions (total visits)
-//   uniqueVisitors  <- totalVisitors (distinct visitors that day)
-//
-// Every other field is SAMPLE data: those metrics aren't tracked yet, so
-// they're generated here (deterministically, derived from the real visit
-// counts so the funnel stays coherent) purely so the design can be reviewed.
-// To connect real data later, replace `sampleMetricsFor()` (or the whole
-// `buildDailyRows()`) with values from an API response and drop the field
-// from SAMPLE_FIELDS — nothing in the UI needs to change.
+//   visitors, uniqueVisitors <- GET /api/analytics/dashboard/trend
+//                               (sessions / totalVisitors)
+//   audience + engagement    <- GET /api/analytics/dashboard/engagement
+//                               (guests = unique visitors - logged-in)
+//   payment fields           <- GET /api/analytics/dashboard/payments
+//                               (the payments table; first-time checkouts,
+//                               with automatic renewals kept separate)
 
-export const SAMPLE_FIELDS = new Set([
-  'loggedInUsers',
-  'guestUsers',
-  'utmVisitors',
-  'nonUtmVisitors',
-  'contentClicks',
-  'engagedVisitors',
+const PAYMENT_FIELDS = [
   'paymentAttempts',
   'successfulPayments',
   'failedPayments',
   'pendingPayments',
   'cancelledPayments',
   'revenue',
-]);
+  'renewals',
+  'renewalRevenue',
+];
 
-export const isSampleField = (field) => SAMPLE_FIELDS.has(field);
+const ENGAGEMENT_FIELDS = {
+  loggedInUsers: 'loggedInUsers',
+  utmVisitors: 'utmVisits',
+  nonUtmVisitors: 'nonUtmVisits',
+  contentClicks: 'contentClicks',
+  engagedVisitors: 'engagedVisitors',
+};
 
-// Price used only for SAMPLE revenue (the Monthly plan).
-const SAMPLE_PLAN_PRICE = 199;
-
-// Deterministic 0..1 value from a string, so sample numbers don't jump on
-// every re-render or refresh.
-function seeded(key) {
-  let h = 2166136261;
-  for (let i = 0; i < key.length; i += 1) {
-    h ^= key.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return ((h >>> 0) % 10000) / 10000;
-}
-
-const between = (key, min, max) => min + seeded(key) * (max - min);
-
-// SAMPLE: replace with real per-day values once tracked.
-function sampleMetricsFor(date, visitors, uniqueVisitors) {
-  const loggedInUsers = Math.round(uniqueVisitors * between(`${date}:li`, 0.25, 0.45));
-  const utmVisitors = Math.round(visitors * between(`${date}:utm`, 0.4, 0.7));
-  const engagedVisitors = Math.round(uniqueVisitors * between(`${date}:eng`, 0.35, 0.6));
-  const contentClicks = Math.round(engagedVisitors * between(`${date}:clk`, 1.8, 3.6));
-  const paymentAttempts = Math.round(engagedVisitors * between(`${date}:att`, 0.12, 0.28));
-  const successfulPayments = Math.round(paymentAttempts * between(`${date}:ok`, 0.5, 0.75));
-  const notCompleted = paymentAttempts - successfulPayments;
-  const failedPayments = Math.round(notCompleted * between(`${date}:fail`, 0.45, 0.7));
-  const pendingPayments = Math.round((notCompleted - failedPayments) * between(`${date}:pend`, 0.4, 0.7));
-  const cancelledPayments = notCompleted - failedPayments - pendingPayments;
-
-  return {
-    loggedInUsers,
-    guestUsers: Math.max(0, uniqueVisitors - loggedInUsers),
-    utmVisitors,
-    nonUtmVisitors: Math.max(0, visitors - utmVisitors),
-    contentClicks,
-    engagedVisitors,
-    paymentAttempts,
-    successfulPayments,
-    failedPayments,
-    pendingPayments,
-    cancelledPayments,
-    revenue: successfulPayments * SAMPLE_PLAN_PRICE,
+// trendSeries = `series` from /dashboard/trend; paymentSeries / engagementSeries
+// = `series` from /dashboard/payments and /dashboard/engagement (only days
+// that had data).
+export function buildDailyRows(trendSeries = [], paymentSeries = [], engagementSeries = []) {
+  const byDate = new Map();
+  const rowFor = (date) => {
+    if (!byDate.has(date)) {
+      byDate.set(date, {
+        date,
+        visitors: 0,
+        uniqueVisitors: 0,
+        ...Object.fromEntries(Object.keys(ENGAGEMENT_FIELDS).map((f) => [f, 0])),
+        ...Object.fromEntries(PAYMENT_FIELDS.map((f) => [f, 0])),
+      });
+    }
+    return byDate.get(date);
   };
-}
 
-// trendSeries = the `series` array from GET /api/analytics/dashboard/trend.
-export function buildDailyRows(trendSeries = []) {
-  return trendSeries.map((point) => {
-    const visitors = point.sessions || 0;
-    const uniqueVisitors = point.totalVisitors || 0;
-    return {
-      date: point.date,
-      visitors,
-      uniqueVisitors,
-      ...sampleMetricsFor(point.date, visitors, uniqueVisitors),
-    };
-  });
+  for (const point of trendSeries) {
+    const row = rowFor(point.date);
+    row.visitors = point.sessions || 0;
+    row.uniqueVisitors = point.totalVisitors || 0;
+  }
+  for (const point of paymentSeries) {
+    const row = rowFor(point.date);
+    PAYMENT_FIELDS.forEach((f) => { row[f] = Number(point[f]) || 0; });
+  }
+  for (const point of engagementSeries) {
+    const row = rowFor(point.date);
+    Object.entries(ENGAGEMENT_FIELDS).forEach(([field, apiField]) => { row[field] = Number(point[apiField]) || 0; });
+  }
+
+  return Array.from(byDate.values())
+    .map((row) => ({ ...row, guestUsers: Math.max(0, row.uniqueVisitors - row.loggedInUsers) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 const pct = (part, whole) => (whole > 0 ? (part / whole) * 100 : 0);
 
-// Period totals + derived rates. `realSummary` (GET /dashboard/summary) wins
-// for visitor counts: summing daily unique visitors would double-count
-// people who visited on more than one day.
-export function summarize(rows, realSummary) {
+// Period totals + derived rates. `realSummary` (GET /dashboard/summary) and
+// `engagementTotals` (GET /dashboard/engagement `totals`) win for people
+// counts: summing daily distinct counts would double-count anyone active on
+// more than one day.
+export function summarize(rows, realSummary, engagementTotals) {
   const sum = (field) => rows.reduce((total, row) => total + (row[field] || 0), 0);
   const totals = {
     visitors: realSummary ? realSummary.sessions : sum('visitors'),
     uniqueVisitors: realSummary ? realSummary.uniqueVisitors : sum('uniqueVisitors'),
-    loggedInUsers: sum('loggedInUsers'),
-    guestUsers: sum('guestUsers'),
+    loggedInUsers: engagementTotals ? engagementTotals.loggedInUsers : sum('loggedInUsers'),
     utmVisitors: sum('utmVisitors'),
     nonUtmVisitors: sum('nonUtmVisitors'),
     contentClicks: sum('contentClicks'),
-    engagedVisitors: sum('engagedVisitors'),
+    engagedVisitors: engagementTotals ? engagementTotals.engagedVisitors : sum('engagedVisitors'),
     paymentAttempts: sum('paymentAttempts'),
     successfulPayments: sum('successfulPayments'),
     failedPayments: sum('failedPayments'),
     pendingPayments: sum('pendingPayments'),
     cancelledPayments: sum('cancelledPayments'),
     revenue: sum('revenue'),
+    renewals: sum('renewals'),
+    renewalRevenue: sum('renewalRevenue'),
   };
 
+  totals.guestUsers = Math.max(0, totals.uniqueVisitors - totals.loggedInUsers);
   totals.notCompleted = totals.paymentAttempts - totals.successfulPayments;
 
   totals.rates = {
+    visitorToLogin: pct(totals.loggedInUsers, totals.uniqueVisitors),
+    loginToAttempt: pct(totals.paymentAttempts, totals.loggedInUsers),
+    engagement: pct(totals.engagedVisitors, totals.uniqueVisitors),
     visitorToAttempt: pct(totals.paymentAttempts, totals.uniqueVisitors),
     attemptToSuccess: pct(totals.successfulPayments, totals.paymentAttempts),
     visitorToPaid: pct(totals.successfulPayments, totals.uniqueVisitors),
-    engagement: pct(totals.engagedVisitors, totals.uniqueVisitors),
     failure: pct(totals.failedPayments, totals.paymentAttempts),
     pending: pct(totals.pendingPayments, totals.paymentAttempts),
     cancelled: pct(totals.cancelledPayments, totals.paymentAttempts),
@@ -140,15 +122,6 @@ export function percentChange(current, previous) {
 
 // Daily conversion rate for the report table.
 export const rowConversionRate = (row) => pct(row.successfulPayments, row.uniqueVisitors);
-
-// SAMPLE extras for a UTM campaign row (the real row has sessions + conversions).
-export function sampleUtmMetrics(row) {
-  const key = `${row.source}|${row.medium}|${row.campaign}`;
-  const contentClicks = Math.round(row.sessions * between(`${key}:clk`, 0.8, 2.2));
-  const paymentAttempts = Math.round(row.sessions * between(`${key}:att`, 0.05, 0.18));
-  const successfulPayments = Math.round(paymentAttempts * between(`${key}:ok`, 0.5, 0.75));
-  return { contentClicks, paymentAttempts, successfulPayments, conversionRate: pct(successfulPayments, row.sessions) };
-}
 
 // ---- date helpers -------------------------------------------------------
 

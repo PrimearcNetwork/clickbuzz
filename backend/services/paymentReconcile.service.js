@@ -1,4 +1,4 @@
-const { Payment, Subscription, SubscriptionPlan } = require('../models');
+const { Payment, Subscription, SubscriptionPlan, Session } = require('../models');
 const { sequelize } = require('../config/db.config');
 const razorpayUtil = require('../utils/razorpay.util');
 const metaCapiUtil = require('../utils/metaCapi.util');
@@ -70,6 +70,15 @@ async function applyPaymentResult(txnid, razorpayPayment) {
         if (newStatus === 'success' && payment.click_id && !payment.affiliate_postback_sent_at && payment.payment_method !== 'RAZORPAY_AUTOPAY') {
             sendAffiliateConversionPostback(payment).catch((err) => {
                 console.error(`Affiliate postback failed for txnid=${txnid}:`, err);
+            });
+        }
+
+        // First-party analytics: the visit this checkout came from now counts
+        // as a conversion (dashboard "Conversions"). Fire-and-forget, same as
+        // the calls above — it can never affect the payment itself.
+        if (newStatus === 'success' && payment.analytics_session_id && payment.payment_method !== 'RAZORPAY_AUTOPAY') {
+            Session.update({ converted: true }, { where: { session_id: payment.analytics_session_id } }).catch((err) => {
+                console.error(`Analytics conversion mark failed for txnid=${txnid}:`, err.message);
             });
         }
 

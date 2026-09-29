@@ -227,7 +227,9 @@ async function processPageviews(hits) {
         await session.update({
             pages_viewed: totalPages,
             exit_page: sessionHits[sessionHits.length - 1].url,
-            is_bounce: totalPages < 2 && session.duration_seconds < BOUNCE_MIN_DURATION_SECONDS
+            is_bounce: totalPages < 2 && session.duration_seconds < BOUNCE_MIN_DURATION_SECONDS,
+            // Only ever switches on: a session that logged in part-way stays logged in.
+            is_logged_in: session.is_logged_in || sessionHits.some((hit) => hit.loggedIn)
         });
     }));
 }

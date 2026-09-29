@@ -1,9 +1,8 @@
 import { ArrowDown } from 'lucide-react';
-import SampleBadge from './SampleBadge';
 import { SEQUENTIAL_HUE } from '../vizTheme';
 import { formatNumber, formatPercent } from '../data/reportModel';
 
-// Visitor → interaction → payment attempt → success. Every stage is the
+// Visitor → payment attempt → success. Every stage is the
 // same measure (people) at decreasing magnitude, so it's one hue throughout
 // (sequential), bar length proportional to the first stage. Between stages:
 // the share that continued. Values and labels stay in text ink.
@@ -26,10 +25,7 @@ const ConversionFunnel = ({ stages }) => {
               </div>
             ) : null}
             <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-1.5">
-              <span className="flex items-center gap-2 text-sm text-[#c3c2b7]">
-                {stage.label}
-                {stage.sample ? <SampleBadge /> : null}
-              </span>
+              <span className="text-sm text-[#c3c2b7]">{stage.label}</span>
               <span className="flex items-baseline gap-2">
                 <span className="text-lg font-semibold text-white tabular-nums">{formatNumber(stage.value)}</span>
                 {i > 0 ? <span className="text-xs text-[#898781] tabular-nums">{formatPercent(overall)} of visitors</span> : null}

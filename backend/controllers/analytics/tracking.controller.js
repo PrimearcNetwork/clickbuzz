@@ -95,7 +95,7 @@ function sanitizeHit(raw, ctx) {
         case 'pageview': {
             const url = truncString(raw.url, 512);
             if (!url) return null;
-            return { ...base, url, pageTitle: truncString(raw.pageTitle, 512) };
+            return { ...base, url, pageTitle: truncString(raw.pageTitle, 512), loggedIn: raw.loggedIn === true };
         }
         case 'event': {
             const eventName = truncString(raw.eventName, 128);

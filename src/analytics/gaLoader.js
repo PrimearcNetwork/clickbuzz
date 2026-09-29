@@ -3,6 +3,8 @@
 // a dependency of it. Both are entirely config-driven: with no measurement
 // ID / container ID set, nothing is injected into the page at all.
 
+import { isInternalDevice } from './internalTraffic';
+
 const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID;
 const GTM_CONTAINER_ID = import.meta.env.VITE_GTM_CONTAINER_ID;
 
@@ -19,7 +21,7 @@ function injectScript(src, attrs = {}) {
 }
 
 export function loadGoogleAnalytics() {
-    if (gaLoaded || !GA_MEASUREMENT_ID || typeof window === 'undefined') return;
+    if (gaLoaded || !GA_MEASUREMENT_ID || typeof window === 'undefined' || isInternalDevice()) return;
     gaLoaded = true;
 
     window.dataLayer = window.dataLayer || [];
@@ -33,7 +35,7 @@ export function loadGoogleAnalytics() {
 }
 
 export function loadGoogleTagManager() {
-    if (gtmLoaded || !GTM_CONTAINER_ID || typeof window === 'undefined') return;
+    if (gtmLoaded || !GTM_CONTAINER_ID || typeof window === 'undefined' || isInternalDevice()) return;
     gtmLoaded = true;
 
     window.dataLayer = window.dataLayer || [];

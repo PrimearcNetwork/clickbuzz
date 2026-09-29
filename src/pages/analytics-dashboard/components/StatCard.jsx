@@ -1,12 +1,11 @@
 import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
-import SampleBadge from './SampleBadge';
 import { STATUS_GOOD, STATUS_CRITICAL } from '../vizTheme';
 
-// `delta` (% vs previous period), `goodWhen`, `icon` and `sample` are
+// `delta` (% vs previous period), `goodWhen` and `icon` are
 // optional — existing callers (label/value/hint) render exactly as before.
 // Delta text stays in secondary ink; only the arrow carries the good/bad
 // color, so meaning never rests on color alone.
-const StatCard = ({ label, value, hint, delta = null, goodWhen = 'up', icon: Icon, sample = false }) => {
+const StatCard = ({ label, value, hint, delta = null, goodWhen = 'up', icon: Icon }) => {
   const hasDelta = delta !== null && delta !== undefined && Number.isFinite(delta);
   const isUp = hasDelta && delta >= 0;
   const isGood = hasDelta && (goodWhen === 'up' ? isUp : !isUp);
@@ -27,7 +26,6 @@ const StatCard = ({ label, value, hint, delta = null, goodWhen = 'up', icon: Ico
         </div>
       ) : null}
       {hint ? <div className="mt-1 text-xs text-[#c3c2b7]">{hint}</div> : null}
-      {sample ? <SampleBadge className="mt-2" /> : null}
     </div>
   );
 };

@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
-import { isSampleField, rowConversionRate, formatNumber, formatPercent, formatCurrency } from '../data/reportModel';
+import { rowConversionRate, formatNumber, formatPercent, formatCurrency } from '../data/reportModel';
 
 // Date-by-date report: visits, engagement and payments per day, grouped
-// headers, sortable columns, a totals row, paging. Columns backed by
-// sample data carry a dashed underline + "Sample" marker in the header.
+// headers, sortable columns, a totals row, paging.
 const COLUMN_GROUPS = [
   {
     label: 'Visits',
@@ -30,7 +29,7 @@ const COLUMN_GROUPS = [
       { key: 'successfulPayments', label: 'Successful' },
       { key: 'failedPayments', label: 'Failed' },
       { key: 'pendingPayments', label: 'Pending' },
-      { key: 'conversionRate', label: 'Conversion', format: formatPercent, sampleFrom: 'successfulPayments' },
+      { key: 'conversionRate', label: 'Conversion', format: formatPercent },
       { key: 'revenue', label: 'Revenue', format: formatCurrency },
     ],
   },
@@ -99,7 +98,6 @@ const DailyReportTable = ({ rows, totals }) => {
             </tr>
             <tr className="text-[11px] uppercase tracking-wider text-[#898781]">
               {ALL_COLUMNS.map((col, i) => {
-                const sample = isSampleField(col.sampleFrom || col.key);
                 const groupStart = COLUMN_GROUPS.some((g) => g.columns[0].key === col.key);
                 return (
                   <th
@@ -108,9 +106,7 @@ const DailyReportTable = ({ rows, totals }) => {
                     className={`text-right font-medium py-2 px-3 border-b border-white/10 whitespace-nowrap ${groupStart && i > 0 ? 'border-l border-l-white/10' : ''} ${groupStart && i === 0 ? 'border-l border-l-white/10' : ''}`}
                   >
                     <button type="button" onClick={() => toggleSort(col.key)} className="inline-flex items-center gap-1 hover:text-white">
-                      <span className={sample ? 'underline decoration-dashed decoration-white/30 underline-offset-4' : ''} title={sample ? 'Sample data — not tracked yet' : undefined}>
-                        {col.label}
-                      </span>
+                      <span>{col.label}</span>
                       <SortIcon sort={sort} colKey={col.key} />
                     </button>
                   </th>
@@ -162,7 +158,7 @@ const DailyReportTable = ({ rows, totals }) => {
             </select>
           </label>
           <span className="hidden sm:inline">
-            <span className="underline decoration-dashed decoration-white/30 underline-offset-4">Dashed</span> columns show sample data. Unique visitors in the total are de-duplicated across days.
+            Unique visitors in the total are de-duplicated across days.
           </span>
         </div>
         <div className="flex items-center gap-2">

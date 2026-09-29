@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Lock, Loader2 } from 'lucide-react';
 import { checkAdminSession, adminLogin, includeCredentialsForApi } from '../services/adminSession';
+import { setInternalDevice } from '../analytics/internalTraffic';
 
 // Password screen in front of the /admin and /analytics dashboards. It only
 // decides what to render — the real protection is server-side: every admin
@@ -40,6 +41,12 @@ const AdminGate = ({ children }) => {
       setSubmitting(false);
     }
   };
+
+  // Whoever can unlock the admin is the site owner: exclude this browser
+  // from visitor analytics from now on (see analytics/internalTraffic.js).
+  useEffect(() => {
+    if (state === 'unlocked') setInternalDevice(true);
+  }, [state]);
 
   if (state === 'unlocked') return children;
 

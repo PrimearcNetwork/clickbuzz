@@ -37,7 +37,7 @@ const AdminAboutUs = () => {
   };
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full flex flex-col">
       {/* Header Area */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <h2 className="text-lg md:text-xl font-bold text-white tracking-wider uppercase">ABOUT US LISTING</h2>
@@ -50,7 +50,7 @@ const AdminAboutUs = () => {
       </div>
 
       {/* List Area */}
-      <div className="flex-1 bg-[#141a29] rounded-xl border border-gray-800 overflow-hidden shadow-2xl flex flex-col">
+      <div className="bg-[#141a29] rounded-xl border border-gray-800 overflow-hidden shadow-2xl flex flex-col">
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-left text-sm text-gray-300 min-w-[600px]">
             <thead className="bg-[#1e293b]/80 border-b border-gray-800 text-gray-300 font-semibold text-xs tracking-wider">

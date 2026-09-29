@@ -2,6 +2,7 @@
 // gaLoader.js's pattern (module-level loaded flag, own env var, no-op if
 // unset). No track calls live here; see metaEvents.js for those.
 import { hasMarketingConsent } from './metaConsent';
+import { isInternalDevice } from './internalTraffic';
 
 const META_PIXEL_ID = import.meta.env.VITE_META_PIXEL_ID;
 export const META_PIXEL_DEBUG = import.meta.env.VITE_META_PIXEL_DEBUG === 'true';
@@ -38,7 +39,7 @@ function injectScript(src) {
 // trigger a real init via the same call.
 export function initializeMetaPixel() {
     if (metaPixelLoaded || !META_PIXEL_ID || typeof window === 'undefined') return;
-    if (!hasMarketingConsent()) return;
+    if (!hasMarketingConsent() || isInternalDevice()) return;
     metaPixelLoaded = true;
     try {
         installFbqStub();

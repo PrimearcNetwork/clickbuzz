@@ -4,6 +4,8 @@ import { trackPageview } from './tracker';
 import { loadGoogleAnalytics, loadGoogleTagManager, trackGaPageview } from './gaLoader';
 import { deferToIdle } from './deferToIdle';
 import { captureClickId } from './affiliateClickId';
+import { applyInternalFlagFromUrl } from './internalTraffic';
+import { installContentClickTracking } from './contentClickTracking';
 
 // Paths this analytics module deliberately never tracks as visitor traffic:
 // the admin CMS and the analytics dashboard itself — otherwise the site
@@ -38,6 +40,7 @@ export function useAnalyticsTracker() {
             loadGoogleAnalytics();
             loadGoogleTagManager();
         });
+        installContentClickTracking();
     }, []);
 
     // Independent of the pageview dedup/exclusion logic below — an affiliate
@@ -46,6 +49,8 @@ export function useAnalyticsTracker() {
     // navigation rather than sharing the pageview effect's guards.
     useEffect(() => {
         captureClickId();
+        // ?cb_internal=1 / 0 — must run before the pageview effect below.
+        applyInternalFlagFromUrl();
     }, [location.pathname, location.search]);
 
     useEffect(() => {

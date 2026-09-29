@@ -16,6 +16,8 @@ const {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\d{10}$/;
+// Same shape as the ids POST /api/analytics/collect accepts.
+const ANALYTICS_ID_RE = /^[a-zA-Z0-9-]{8,64}$/;
 
 // Razorpay Plan `period`/`interval` per this app's SubscriptionPlan.billing_cycle
 // values, plus a total_count tuned to ~10 years of that cadence — matches
@@ -49,7 +51,10 @@ const generateTxnId = () => {
 // Checkout.js.
 exports.createPayment = async (req, res) => {
     try {
-        const { plan_id, customer_name, customer_email, customer_phone, fbc, fbp, click_id, enable_autopay } = req.body;
+        const {
+            plan_id, customer_name, customer_email, customer_phone, fbc, fbp, click_id, enable_autopay,
+            analytics_session_id, analytics_visitor_id, is_internal
+        } = req.body;
 
         if (!plan_id || !customer_name || !customer_email || !customer_phone) {
             return res.status(400).json({ message: 'plan_id, customer_name, customer_email and customer_phone are required' });
@@ -97,6 +102,10 @@ exports.createPayment = async (req, res) => {
         }
         const sanitizedClickId = isValidClickId(click_id) ? click_id : null;
 
+        // First-party analytics link — same shape as the ids /api/analytics/collect
+        // accepts; anything else is dropped (never blocks the payment).
+        const analyticsId = (value) => (typeof value === 'string' && ANALYTICS_ID_RE.test(value) ? value : null);
+
         // Create the pending record first so we have an audit trail even if
         // the call to Razorpay below fails outright.
         const payment = await Payment.create({
@@ -111,6 +120,9 @@ exports.createPayment = async (req, res) => {
             fbc: typeof fbc === 'string' ? fbc.slice(0, 255) : null,
             fbp: typeof fbp === 'string' ? fbp.slice(0, 255) : null,
             click_id: sanitizedClickId,
+            analytics_session_id: analyticsId(analytics_session_id),
+            analytics_visitor_id: analyticsId(analytics_visitor_id),
+            is_internal: is_internal === true,
             client_ip: getClientIp(req),
             client_user_agent: (req.headers['user-agent'] || '').toString().slice(0, 512),
             meta_event_id: metaEventId

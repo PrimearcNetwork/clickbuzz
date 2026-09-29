@@ -6,6 +6,8 @@ import { useAuth, markPaid } from '../hooks/useAuth';
 import { trackCompleteRegistration } from '../analytics/metaEvents';
 import { getStoredFbc, getFbpCookie } from '../analytics/metaClickIds';
 import { getStoredClickId } from '../analytics/affiliateClickId';
+import { getAnalyticsIds } from '../analytics/tracker';
+import { isInternalDevice } from '../analytics/internalTraffic';
 import { loadRazorpayCheckout } from '../services/razorpayCheckout';
 import defaultBanner from '../assets/explore-plans-banner.png';
 
@@ -201,6 +203,7 @@ const PlansPage = () => {
       // per transaction, so a demo placeholder is derived from the session
       // phone number instead of asking the user to type them in.
       const customerEmail = `user${customerPhone}@clickbuz-demo.local`;
+      const analyticsIds = getAnalyticsIds();
       const res = await paymentsApi.create({
         plan_id: selectedPlan,
         customer_name: 'ClickBuz User',
@@ -212,6 +215,12 @@ const PlansPage = () => {
         // when this visitor never arrived with a ?click_id=... URL param.
         // See src/analytics/affiliateClickId.js and CLAUDE.md §26.
         click_id: getStoredClickId(),
+        // First-party analytics: ties this checkout to the visit it came from
+        // (UTM attribution, conversions); team/owner devices are flagged so
+        // their test payments stay out of the Analytics dashboard.
+        analytics_session_id: analyticsIds.sessionId,
+        analytics_visitor_id: analyticsIds.visitorId,
+        is_internal: isInternalDevice(),
         // Every plan (weekly/monthly/annual) bills via a Razorpay Subscription
         // rather than a one-time order, so it auto-renews on that plan's own
         // cadence — see BILLING_CYCLE_TO_RAZORPAY in payment.controller.js.

@@ -18,7 +18,6 @@ import UtmCampaignTable from './components/UtmCampaignTable';
 import DateRangeFilter from './components/DateRangeFilter';
 import FilterBar from './components/FilterBar';
 import SummaryInsights from './components/SummaryInsights';
-import SampleBadge from './components/SampleBadge';
 import { VISITOR_SERIES_COLORS } from './vizTheme';
 import {
   buildDailyRows, summarize, percentChange, previousRange, toISODate,
@@ -65,14 +64,14 @@ const MARKETING_DIMENSIONS = new Set(MARKETING_PANELS.map((p) => p.dimension));
 const VISITOR_SERIES = [
   { key: 'visitors', label: 'Visits' },
   { key: 'uniqueVisitors', label: 'Unique visitors' },
-  { key: 'loggedInUsers', label: 'Logged-in', sample: true },
-  { key: 'guestUsers', label: 'Guests', sample: true },
+  { key: 'loggedInUsers', label: 'Logged-in' },
+  { key: 'guestUsers', label: 'Guests' },
 ].map((s, i) => ({ ...s, color: VISITOR_SERIES_COLORS[i] }));
 
+// Opens on "Today" (same dates as the Today preset in DateRangeFilter).
 function defaultRange() {
-  const to = new Date();
-  const from = new Date(to.getTime() - 29 * 24 * 60 * 60 * 1000);
-  return { from: toISODate(from), to: toISODate(to) };
+  const today = toISODate(new Date());
+  return { from: today, to: today };
 }
 
 function formatDuration(totalSeconds) {
@@ -154,11 +153,9 @@ const SectionHeading = ({ title, description }) => (
   </div>
 );
 
-const MiniStat = ({ label, value, sample }) => (
+const MiniStat = ({ label, value }) => (
   <div className="min-w-0">
-    <div className="flex items-center gap-1.5 text-xs text-[#898781]">
-      <span className={sample ? 'underline decoration-dashed decoration-white/30 underline-offset-4' : ''}>{label}</span>
-    </div>
+    <div className="text-xs text-[#898781]">{label}</div>
     <div className="mt-1 text-lg font-semibold text-white tabular-nums">{value}</div>
   </div>
 );
@@ -171,6 +168,11 @@ const AnalyticsOverview = () => {
   const [activeVisitors, setActiveVisitors] = useState(null);
   const [trendSeries, setTrendSeries] = useState([]);
   const [prevTrendSeries, setPrevTrendSeries] = useState([]);
+  const [paymentSeries, setPaymentSeries] = useState([]);
+  const [prevPaymentSeries, setPrevPaymentSeries] = useState([]);
+  const [paymentPeople, setPaymentPeople] = useState(null);
+  const [engagement, setEngagement] = useState({ series: [], totals: null });
+  const [prevEngagement, setPrevEngagement] = useState({ series: [], totals: null });
   const [trendMetric, setTrendMetric] = useState('totalVisitors');
   const [granularity, setGranularity] = useState('day');
   const [visitorGranularity, setVisitorGranularity] = useState('day');
@@ -191,13 +193,18 @@ const AnalyticsOverview = () => {
       analyticsApi.getSummary(range),
       analyticsApi.getTrend(range),
       analyticsApi.getUtmCampaigns(range),
+      analyticsApi.getPayments(range),
+      analyticsApi.getEngagement(range),
       ...BREAKDOWN_PANELS.map((panel) => analyticsApi.getBreakdown(panel.dimension, { ...range, limit: 8 }))
     ])
-      .then(([summaryRes, trendRes, utmRes, ...breakdownResList]) => {
+      .then(([summaryRes, trendRes, utmRes, paymentsRes, engagementRes, ...breakdownResList]) => {
         if (cancelled) return;
         setSummary(summaryRes);
         setTrendSeries(trendRes.series || []);
         setUtmCampaigns(utmRes.data || []);
+        setPaymentSeries(paymentsRes.series || []);
+        setPaymentPeople(paymentsRes.totals || null);
+        setEngagement({ series: engagementRes.series || [], totals: engagementRes.totals || null });
         const nextBreakdowns = {};
         BREAKDOWN_PANELS.forEach((panel, i) => {
           nextBreakdowns[panel.dimension] = breakdownResList[i].data || [];
@@ -214,14 +221,25 @@ const AnalyticsOverview = () => {
     // Previous period (same endpoints) for the "vs previous period" deltas,
     // and the latest visits for the timeline. Non-critical: failures only
     // hide the deltas / timeline, never the page.
-    Promise.all([analyticsApi.getSummary(prev), analyticsApi.getTrend(prev)])
-      .then(([prevSummaryRes, prevTrendRes]) => {
+    Promise.all([
+      analyticsApi.getSummary(prev),
+      analyticsApi.getTrend(prev),
+      analyticsApi.getPayments(prev),
+      analyticsApi.getEngagement(prev),
+    ])
+      .then(([prevSummaryRes, prevTrendRes, prevPaymentsRes, prevEngagementRes]) => {
         if (cancelled) return;
         setPrevSummary(prevSummaryRes);
         setPrevTrendSeries(prevTrendRes.series || []);
+        setPrevPaymentSeries(prevPaymentsRes.series || []);
+        setPrevEngagement({ series: prevEngagementRes.series || [], totals: prevEngagementRes.totals || null });
       })
       .catch(() => {
-        if (!cancelled) { setPrevSummary(null); setPrevTrendSeries([]); }
+        if (cancelled) return;
+        setPrevSummary(null);
+        setPrevTrendSeries([]);
+        setPrevPaymentSeries([]);
+        setPrevEngagement({ series: [], totals: null });
       });
 
     analyticsApi.getSessions({ ...range, page: 1, limit: 8 })
@@ -235,7 +253,7 @@ const AnalyticsOverview = () => {
     let cancelled = false;
     const poll = () => {
       analyticsApi.getActive().then((res) => {
-        if (!cancelled) setActiveVisitors(res.activeVisitors);
+        if (!cancelled) setActiveVisitors(Number.isFinite(res?.activeVisitors) ? res.activeVisitors : null);
       }).catch(() => { /* non-critical — leave last known value */ });
     };
     poll();
@@ -243,11 +261,16 @@ const AnalyticsOverview = () => {
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
-  const dailyRows = useMemo(() => buildDailyRows(trendSeries), [trendSeries]);
-  const totals = useMemo(() => summarize(dailyRows, summary), [dailyRows, summary]);
+  const dailyRows = useMemo(
+    () => buildDailyRows(trendSeries, paymentSeries, engagement.series),
+    [trendSeries, paymentSeries, engagement.series]
+  );
+  const totals = useMemo(() => summarize(dailyRows, summary, engagement.totals), [dailyRows, summary, engagement.totals]);
   const prevTotals = useMemo(
-    () => (prevSummary ? summarize(buildDailyRows(prevTrendSeries), prevSummary) : null),
-    [prevTrendSeries, prevSummary]
+    () => (prevSummary
+      ? summarize(buildDailyRows(prevTrendSeries, prevPaymentSeries, prevEngagement.series), prevSummary, prevEngagement.totals)
+      : null),
+    [prevTrendSeries, prevPaymentSeries, prevEngagement, prevSummary]
   );
   const change = (key) => (prevTotals ? percentChange(totals[key], prevTotals[key]) : null);
 
@@ -260,11 +283,13 @@ const AnalyticsOverview = () => {
     [dailyRows, visitorGranularity]
   );
 
+  // People at each step of the real flow: visit -> log in with phone ->
+  // open checkout -> pay. Payment steps count distinct phone numbers.
   const funnelStages = [
     { key: 'visitors', label: 'Website visitors', value: totals.uniqueVisitors },
-    { key: 'engaged', label: 'Interacted with content', value: totals.engagedVisitors, sample: true },
-    { key: 'attempts', label: 'Attempted payment', value: totals.paymentAttempts, sample: true },
-    { key: 'success', label: 'Paid successfully', value: totals.successfulPayments, sample: true },
+    { key: 'loggedIn', label: 'Logged in', value: totals.loggedInUsers },
+    { key: 'attempted', label: 'Tried to pay', value: paymentPeople?.attemptedPeople || 0 },
+    { key: 'paid', label: 'Paid successfully', value: paymentPeople?.paidPeople || 0 },
   ];
 
   const ready = Boolean(summary);
@@ -279,7 +304,7 @@ const AnalyticsOverview = () => {
             <h2 className="text-xl md:text-2xl font-bold text-white">Analytics</h2>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-2.5 py-1 text-xs text-[#c3c2b7]" title="Visitors active in the last 5 minutes">
               <span className="w-1.5 h-1.5 rounded-full bg-[#0ca30c]" aria-hidden="true" />
-              <span className="tabular-nums text-white font-medium">{activeVisitors !== null ? activeVisitors.toLocaleString('en-IN') : '—'}</span> active now
+              <span className="tabular-nums text-white font-medium">{activeVisitors != null ? activeVisitors.toLocaleString('en-IN') : '—'}</span> active now
             </span>
           </div>
           <p className="mt-1 text-sm text-[#898781]">Track visitors, engagement and payment conversion across ClickBuz.</p>
@@ -307,11 +332,6 @@ const AnalyticsOverview = () => {
 
       {showFilters ? <FilterBar /> : null}
 
-      <div className="flex flex-wrap items-center gap-2 text-xs text-[#898781]">
-        <SampleBadge />
-        <span>marks metrics that aren’t tracked yet (logged-in/guest, content clicks, payments, revenue). Those numbers are placeholders for design review.</span>
-      </div>
-
       {error ? (
         <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-xl p-4">{error}</div>
       ) : null}
@@ -320,13 +340,13 @@ const AnalyticsOverview = () => {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
         <StatCard icon={Users} label="Total Visits" value={show(formatNumber(totals.visitors))} delta={change('visitors')} />
         <StatCard icon={UserCheck} label="Unique Visitors" value={show(formatNumber(totals.uniqueVisitors))} delta={change('uniqueVisitors')} />
-        <StatCard icon={LogIn} label="Logged-in Users" value={show(formatNumber(totals.loggedInUsers))} delta={change('loggedInUsers')} sample />
-        <StatCard icon={UserRound} label="Guest Visitors" value={show(formatNumber(totals.guestUsers))} delta={change('guestUsers')} sample />
-        <StatCard icon={MousePointerClick} label="Content Clicks" value={show(formatNumber(totals.contentClicks))} delta={change('contentClicks')} sample />
-        <StatCard icon={CreditCard} label="Payment Attempts" value={show(formatNumber(totals.paymentAttempts))} hint={ready ? `${formatPercent(totals.rates.visitorToAttempt)} of visitors` : null} delta={change('paymentAttempts')} sample />
-        <StatCard icon={CheckCircle2} label="Successful Payments" value={show(formatNumber(totals.successfulPayments))} hint={ready ? `${formatPercent(totals.rates.attemptToSuccess)} success rate` : null} delta={change('successfulPayments')} sample />
-        <StatCard icon={XCircle} label="Failed Payments" value={show(formatNumber(totals.failedPayments))} hint={ready ? `${formatPercent(totals.rates.failure)} of attempts` : null} delta={change('failedPayments')} goodWhen="down" sample />
-        <StatCard icon={Clock} label="Pending Payments" value={show(formatNumber(totals.pendingPayments))} hint={ready ? `${formatPercent(totals.rates.pending)} of attempts` : null} delta={change('pendingPayments')} goodWhen="down" sample />
+        <StatCard icon={LogIn} label="Logged-in Users" value={show(formatNumber(totals.loggedInUsers))} hint={ready ? `${formatPercent(totals.rates.visitorToLogin)} of visitors` : null} delta={change('loggedInUsers')} />
+        <StatCard icon={UserRound} label="Guest Visitors" value={show(formatNumber(totals.guestUsers))} delta={change('guestUsers')} />
+        <StatCard icon={MousePointerClick} label="Content Clicks" value={show(formatNumber(totals.contentClicks))} hint={ready ? `by ${formatNumber(totals.engagedVisitors)} visitors` : null} delta={change('contentClicks')} />
+        <StatCard icon={CreditCard} label="Payment Attempts" value={show(formatNumber(totals.paymentAttempts))} hint={ready ? `${formatPercent(totals.rates.visitorToAttempt)} of visitors` : null} delta={change('paymentAttempts')} />
+        <StatCard icon={CheckCircle2} label="Successful Payments" value={show(formatNumber(totals.successfulPayments))} hint={ready ? `${formatPercent(totals.rates.attemptToSuccess)} success rate` : null} delta={change('successfulPayments')} />
+        <StatCard icon={XCircle} label="Failed Payments" value={show(formatNumber(totals.failedPayments))} hint={ready ? `${formatPercent(totals.rates.failure)} of attempts` : null} delta={change('failedPayments')} goodWhen="down" />
+        <StatCard icon={Clock} label="Pending Payments" value={show(formatNumber(totals.pendingPayments))} hint={ready ? `${formatPercent(totals.rates.pending)} of attempts` : null} delta={change('pendingPayments')} goodWhen="down" />
       </div>
 
       {/* 3. Funnel + 10. Summary */}
@@ -338,10 +358,10 @@ const AnalyticsOverview = () => {
         >
           <ConversionFunnel stages={funnelStages} />
           <div className="mt-5 pt-4 border-t border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <MiniStat label="Didn’t complete" value={formatNumber(totals.notCompleted)} sample />
-            <MiniStat label="Failed" value={formatNumber(totals.failedPayments)} sample />
-            <MiniStat label="Pending" value={formatNumber(totals.pendingPayments)} sample />
-            <MiniStat label="Cancelled" value={formatNumber(totals.cancelledPayments)} sample />
+            <MiniStat label="Didn’t complete" value={formatNumber(totals.notCompleted)} />
+            <MiniStat label="Failed" value={formatNumber(totals.failedPayments)} />
+            <MiniStat label="Pending" value={formatNumber(totals.pendingPayments)} />
+            <MiniStat label="Cancelled" value={formatNumber(totals.cancelledPayments)} />
           </div>
         </Panel>
         <Panel title="Performance summary" subtitle="Figures for the selected period.">
@@ -358,10 +378,10 @@ const AnalyticsOverview = () => {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-5">
           <MiniStat label="Total visits" value={show(formatNumber(totals.visitors))} />
           <MiniStat label="Unique visitors" value={show(formatNumber(totals.uniqueVisitors))} />
-          <MiniStat label="Logged-in" value={show(formatNumber(totals.loggedInUsers))} sample />
-          <MiniStat label="Guests" value={show(formatNumber(totals.guestUsers))} sample />
-          <MiniStat label="With UTM" value={show(formatNumber(totals.utmVisitors))} sample />
-          <MiniStat label="Without UTM" value={show(formatNumber(totals.nonUtmVisitors))} sample />
+          <MiniStat label="Logged-in" value={show(formatNumber(totals.loggedInUsers))} />
+          <MiniStat label="Guests" value={show(formatNumber(totals.guestUsers))} />
+          <MiniStat label="Visits with UTM" value={show(formatNumber(totals.utmVisitors))} />
+          <MiniStat label="Visits without UTM" value={show(formatNumber(totals.nonUtmVisitors))} />
         </div>
         {loading && dailyRows.length === 0 ? (
           <div className="h-[300px] flex items-center justify-center text-sm text-[#898781]">Loading…</div>
@@ -377,7 +397,11 @@ const AnalyticsOverview = () => {
       {/* 4 + 8. Payment analytics */}
       <SectionHeading title="Payment analytics" description="Attempts, outcomes and conversion rates." />
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <Panel title="Payment outcomes" sample className="xl:col-span-2">
+        <Panel
+          title="Payment outcomes"
+          subtitle="First-time checkouts. Pending includes checkouts closed without paying."
+          className="xl:col-span-2"
+        >
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-5">
             <MiniStat label="Payment attempts" value={formatNumber(totals.paymentAttempts)} />
             <MiniStat label="Success rate" value={formatPercent(totals.rates.attemptToSuccess)} />
@@ -390,9 +414,11 @@ const AnalyticsOverview = () => {
             <MiniStat label="Revenue (successful)" value={formatCurrency(totals.revenue)} />
             <MiniStat label="Successful payments" value={formatNumber(totals.successfulPayments)} />
             <MiniStat label="Avg. transaction value" value={formatCurrency(totals.avgTransactionValue)} />
+            <MiniStat label="Autopay renewals" value={formatNumber(totals.renewals)} />
+            <MiniStat label="Renewal revenue" value={formatCurrency(totals.renewalRevenue)} />
           </div>
         </Panel>
-        <Panel title="Payment status" subtitle="Share of all payment attempts." sample>
+        <Panel title="Payment status" subtitle="Share of all payment attempts.">
           <PaymentStatusBar totals={totals} />
         </Panel>
       </div>
@@ -405,7 +431,7 @@ const AnalyticsOverview = () => {
 
       {/* 7. Marketing */}
       <SectionHeading title="Marketing" description="Which sources and campaigns bring visitors and payments." />
-      <Panel title="UTM campaign performance" subtitle="Visits and conversions are live; dashed columns are sample data.">
+      <Panel title="UTM campaign performance" subtitle="Visits, content clicks and payments from each campaign's visits. Conversions are visits that ended in a successful payment.">
         <UtmCampaignTable rows={utmCampaigns} />
       </Panel>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

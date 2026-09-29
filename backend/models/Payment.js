@@ -142,6 +142,24 @@ const Payment = sequelize.define('Payment', {
     affiliate_postback_sent_at: {
         type: DataTypes.DATE,
         allowNull: true
+    },
+    // First-party analytics link (CLAUDE.md §23): the analytics session and
+    // visitor this checkout started from — used for UTM attribution and to
+    // mark that session as converted once the payment succeeds.
+    analytics_session_id: {
+        type: DataTypes.STRING(64),
+        allowNull: true
+    },
+    analytics_visitor_id: {
+        type: DataTypes.STRING(64),
+        allowNull: true
+    },
+    // Checkout made from an owner/team device (src/analytics/internalTraffic.js)
+    // — kept out of the Analytics dashboard.
+    is_internal: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
     }
 }, {
     tableName: 'payments',

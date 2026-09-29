@@ -16,6 +16,8 @@ router.get('/dashboard/active', dashboardController.getActiveVisitors);
 router.get('/dashboard/trend', dashboardController.getTrend);
 router.get('/dashboard/breakdown', dashboardController.getBreakdown);
 router.get('/dashboard/utm-campaigns', dashboardController.getUtmCampaigns);
+router.get('/dashboard/payments', dashboardController.getPayments);
+router.get('/dashboard/engagement', dashboardController.getEngagement);
 
 // Visitor table + detail.
 router.get('/visitors/filters', visitorsController.getFilterOptions);

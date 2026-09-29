@@ -10,6 +10,8 @@
 // never does tracking work inline with the request/response cycle either
 // (see backend/services/analytics/eventBuffer.service.js).
 
+import { isInternalDevice } from './internalTraffic';
+
 const COLLECT_ENDPOINT = `${import.meta.env.VITE_API_URL}/api/analytics/collect`;
 
 const VISITOR_KEY = 'clickbuz_analytics_visitor_id';
@@ -19,6 +21,10 @@ const SESSION_KEY = 'clickbuz_analytics_session';
 // continues the same session; otherwise a new one starts.
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 20 * 1000;
+
+// The consumer login session (src/hooks/useAuth.js) — read directly so this
+// file stays React-free.
+const LOGIN_SESSION_KEY = 'clickbuz_demo_session';
 
 let visitorId = null;
 let currentSessionId = null;
@@ -112,6 +118,8 @@ function safeTimezone() {
 
 function sendHits(hits) {
     if (!visitorId || !currentSessionId || hits.length === 0) return;
+    // The owner's own devices never count as visitors (see internalTraffic.js).
+    if (isInternalDevice()) return;
 
     const payload = JSON.stringify({ visitorId, sessionId: currentSessionId, hits });
 
@@ -189,11 +197,29 @@ export function trackPageview(url, title) {
             ...parseUtmParams(window.location.search)
         });
     }
-    hits.push({ type: 'pageview', timestamp: Date.now(), url, pageTitle: title });
+    hits.push({ type: 'pageview', timestamp: Date.now(), url, pageTitle: title, loggedIn: isLoggedIn() });
 
     sendHits(hits);
     startHeartbeat();
     attachUnloadHandlers();
+}
+
+function isLoggedIn() {
+    try {
+        return Boolean(localStorage.getItem(LOGIN_SESSION_KEY));
+    } catch {
+        return false;
+    }
+}
+
+// The current analytics visitor/session ids — sent with a checkout so the
+// payment can be tied back to the visit it came from (UTM attribution,
+// conversions).
+export function getAnalyticsIds() {
+    ensureIdentity();
+    const { sessionId } = getOrCreateSession();
+    currentSessionId = sessionId;
+    return { visitorId, sessionId };
 }
 
 // Reusable custom-event tracker — every page/component in the app calls

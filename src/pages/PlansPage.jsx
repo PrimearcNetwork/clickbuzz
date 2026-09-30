@@ -9,6 +9,7 @@ import { getStoredClickId } from '../analytics/affiliateClickId';
 import { getAnalyticsIds } from '../analytics/tracker';
 import { isInternalDevice } from '../analytics/internalTraffic';
 import { loadRazorpayCheckout } from '../services/razorpayCheckout';
+import { getPlanLock } from '../utils/planLock';
 import defaultBanner from '../assets/explore-plans-banner.png';
 
 // Short fallback poll — only kicks in if the backend's own /verify call
@@ -28,7 +29,15 @@ const cycleOf = (plan) => (plan.billing_cycle || '').toUpperCase();
 
 // First active plan per offered cycle (Weekly, then Monthly). Falls back to
 // the recommended / first active plan if neither cycle exists.
+// Visitors from weekly./monthly.clickbuz.in (see utils/planLock.js) get only
+// that cycle's plan — never another plan as a fallback, so a missing plan
+// shows the "couldn't load" state instead.
 const pickOfferedPlans = (data) => {
+  const lockedCycle = getPlanLock();
+  if (lockedCycle) {
+    const locked = data.find((p) => cycleOf(p) === lockedCycle);
+    return locked ? [locked] : [];
+  }
   const offered = OFFERED_CYCLES
     .map((cycle) => data.find((p) => cycleOf(p) === cycle))
     .filter(Boolean);

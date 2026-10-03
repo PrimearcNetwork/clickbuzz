@@ -242,9 +242,13 @@ async function sendMetaCapiCompleteRegistration(payment) {
 // marks any attempt regardless of outcome, since CAPI has no equivalent
 // retry requirement.
 async function sendAffiliateConversionPostback(payment) {
+    // The paid plan's cycle picks the partner (weekly → media9, others →
+    // TrafficMedia24) — see resolvePostbackConfig in affiliatePostback.util.js.
+    const plan = payment.plan_id ? await SubscriptionPlan.findByPk(payment.plan_id) : null;
     const result = await affiliatePostbackUtil.sendAffiliatePostback({
         clickId: payment.click_id,
-        txnid: payment.txnid
+        txnid: payment.txnid,
+        billingCycle: plan?.billing_cycle
     });
     if (result.ok) {
         await payment.update({ affiliate_postback_sent_at: new Date() });

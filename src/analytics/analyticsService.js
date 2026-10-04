@@ -5,6 +5,7 @@
 // GA/GTM/custom-analytics wiring (useAnalyticsTracker.js) is untouched and
 // keeps working exactly as it does now.
 import { buildMetaContext } from './metaContext';
+import { isInternalDevice } from './internalTraffic';
 
 const providers = new Map();
 
@@ -26,6 +27,9 @@ function buildDispatchContext(extra = {}) {
 }
 
 export function trackPageView(url, title, options = {}) {
+    // A provider loaded before the device was flagged internal (e.g. on the
+    // login page) must stop receiving hits once it is.
+    if (isInternalDevice()) return;
     const context = buildDispatchContext({ pageUrl: url, pageTitle: title });
     resolveTargets(options).forEach((provider) => {
         try {
@@ -37,6 +41,7 @@ export function trackPageView(url, title, options = {}) {
 }
 
 export function trackEvent(eventName, params = {}, options = {}) {
+    if (isInternalDevice()) return;
     // An explicit eventId (e.g. from PlansPage.jsx's checkout flow) lets this
     // Pixel event dedupe against a server-side Conversions API mirror that
     // was generated earlier and already shared with the backend — see

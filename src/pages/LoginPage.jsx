@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
-import { useAuth, setDemoSession, markPaid } from '../hooks/useAuth';
+import { useAuth, setDemoSession, markPaid, hasFullAccess } from '../hooks/useAuth';
 import { plansApi, paymentsApi, siteSettingsApi } from '../services/api';
 import { loadRazorpayCheckout } from '../services/razorpayCheckout';
+import { setInternalDevice } from '../analytics/internalTraffic';
 import defaultBanner from '../assets/explore-plans-banner.png';
 
 // India-only — any 10-digit number is accepted, no leading-digit restriction.
@@ -67,6 +68,16 @@ const LoginPage = () => {
     // Any number that passes the format check above logs in — no OTP step,
     // no fixed account list.
     setDemoSession(fullPhoneNumber);
+
+    if (hasFullAccess(fullPhoneNumber)) {
+      // Full-access numbers are the owner's own testing — keep this browser
+      // out of analytics from now on (see analytics/internalTraffic.js).
+      setInternalDevice(true);
+      markPaid();
+      setLoading(false);
+      navigate('/');
+      return;
+    }
 
     // A returning customer who already has an active (paid, unexpired)
     // subscription for this phone number shouldn't be asked to pay again on

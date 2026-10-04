@@ -57,11 +57,11 @@ export function loadGoogleTagManager() {
 }
 
 export function trackGaPageview(url, title) {
-    if (!gaLoaded || typeof window.gtag !== 'function') return;
+    if (!gaLoaded || typeof window.gtag !== 'function' || isInternalDevice()) return;
     window.gtag('event', 'page_view', { page_location: url, page_title: title });
 }
 
 export function trackGaEvent(eventName, params = {}) {
-    if (!gaLoaded || typeof window.gtag !== 'function') return;
+    if (!gaLoaded || typeof window.gtag !== 'function' || isInternalDevice()) return;
     window.gtag('event', eventName, params);
 }

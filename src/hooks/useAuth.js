@@ -11,6 +11,13 @@ export const DEMO_ACCOUNTS = [
   { phone: '+917777777777', otp: '6789', type: 'premium' },
 ];
 
+// Numbers that get full access without paying (owner's request): logging in
+// with one of these marks the session paid straight away, skipping the
+// subscription check and the Explore Plans page.
+export const FULL_ACCESS_PHONES = ['+919999999999'];
+
+export const hasFullAccess = (phoneNumber) => FULL_ACCESS_PHONES.includes(phoneNumber);
+
 const readSession = () => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);

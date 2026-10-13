@@ -10,7 +10,8 @@ import { getAnalyticsIds } from '../analytics/tracker';
 import { isInternalDevice } from '../analytics/internalTraffic';
 import { loadRazorpayCheckout } from '../services/razorpayCheckout';
 import { getPlanLock } from '../utils/planLock';
-import defaultBanner from '../assets/explore-plans-banner.jpg';
+import defaultBanner from '../assets/explore-plans-banner.png';
+import planLockBanner from '../assets/plan-lock-banner.jpg';
 
 // Short fallback poll — only kicks in if the backend's own /verify call
 // (fired the instant Razorpay Checkout's in-browser `handler` confirms a
@@ -317,8 +318,11 @@ const PlansPage = () => {
   // Plan choice is locked while a payment is in flight.
   const selectionLocked = ['creating', 'checkout_open', 'confirming'].includes(paymentPhase);
   // Admin-uploaded banner if set (mobile/desktop art direction), otherwise the
-  // built-in default banner.
-  const bannerSrc = background.desktop || background.mobile || defaultBanner;
+  // built-in default banner. Visitors from weekly./monthly.clickbuz.in always
+  // get the campaign banner instead.
+  const bannerSrc = lockedCycle
+    ? planLockBanner
+    : background.desktop || background.mobile || defaultBanner;
 
   return (
     <div className="w-full bg-black min-h-[calc(100vh-80px)] flex flex-col items-center pt-16 md:pt-20 pb-12">
@@ -327,8 +331,8 @@ const PlansPage = () => {
         {/* Banner — full column width, natural height, so it's never cropped
             on any screen size. */}
         <picture className="block w-full">
-          {background.mobile && <source media="(max-width: 767px)" srcSet={background.mobile} />}
-          {background.desktop && <source media="(min-width: 768px)" srcSet={background.desktop} />}
+          {!lockedCycle && background.mobile && <source media="(max-width: 767px)" srcSet={background.mobile} />}
+          {!lockedCycle && background.desktop && <source media="(min-width: 768px)" srcSet={background.desktop} />}
           <img
             src={bannerSrc}
             alt=""

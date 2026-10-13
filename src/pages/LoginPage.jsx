@@ -5,7 +5,9 @@ import { useAuth, setDemoSession, markPaid, hasFullAccess } from '../hooks/useAu
 import { plansApi, paymentsApi, siteSettingsApi } from '../services/api';
 import { loadRazorpayCheckout } from '../services/razorpayCheckout';
 import { setInternalDevice } from '../analytics/internalTraffic';
-import defaultBanner from '../assets/explore-plans-banner.jpg';
+import { getPlanLock } from '../utils/planLock';
+import defaultBanner from '../assets/explore-plans-banner.png';
+import planLockBanner from '../assets/plan-lock-banner.jpg';
 
 // India-only — any 10-digit number is accepted, no leading-digit restriction.
 const COUNTRY_CODE = '+91';
@@ -56,7 +58,12 @@ const LoginPage = () => {
   }
 
   const valid = isValidPhone(phoneDigits);
-  const bannerSrc = banner.desktop || banner.mobile || defaultBanner;
+  // Visitors from weekly./monthly.clickbuz.in (utils/planLock.js) always get
+  // the campaign banner, even when an admin banner is uploaded.
+  const planLocked = getPlanLock() !== null;
+  const bannerSrc = planLocked
+    ? planLockBanner
+    : banner.desktop || banner.mobile || defaultBanner;
 
   const handleProceed = async (e) => {
     e.preventDefault();
@@ -127,8 +134,8 @@ const LoginPage = () => {
         {/* Banner — full card width, natural height, so it's never cropped on
             any screen size (same artwork as the Explore Plans page). */}
         <picture className="block w-full bg-black">
-          {banner.mobile && <source media="(max-width: 767px)" srcSet={banner.mobile} />}
-          {banner.desktop && <source media="(min-width: 768px)" srcSet={banner.desktop} />}
+          {!planLocked && banner.mobile && <source media="(max-width: 767px)" srcSet={banner.mobile} />}
+          {!planLocked && banner.desktop && <source media="(min-width: 768px)" srcSet={banner.desktop} />}
           <img
             src={bannerSrc}
             alt=""

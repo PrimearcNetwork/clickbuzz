@@ -320,7 +320,8 @@ const PlansPage = () => {
   // Admin-uploaded banner if set (mobile/desktop art direction), otherwise the
   // built-in default banner. Visitors from weekly./monthly.clickbuz.in always
   // get the campaign banner instead.
-  const bannerSrc = lockedCycle
+  const planLocked = getPlanLock() !== null;
+  const bannerSrc = planLocked
     ? planLockBanner
     : background.desktop || background.mobile || defaultBanner;
 
@@ -331,8 +332,8 @@ const PlansPage = () => {
         {/* Banner — full column width, natural height, so it's never cropped
             on any screen size. */}
         <picture className="block w-full">
-          {!lockedCycle && background.mobile && <source media="(max-width: 767px)" srcSet={background.mobile} />}
-          {!lockedCycle && background.desktop && <source media="(min-width: 768px)" srcSet={background.desktop} />}
+          {!planLocked && background.mobile && <source media="(max-width: 767px)" srcSet={background.mobile} />}
+          {!planLocked && background.desktop && <source media="(min-width: 768px)" srcSet={background.desktop} />}
           <img
             src={bannerSrc}
             alt=""

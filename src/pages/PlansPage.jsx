@@ -10,7 +10,7 @@ import { getAnalyticsIds } from '../analytics/tracker';
 import { isInternalDevice } from '../analytics/internalTraffic';
 import { loadRazorpayCheckout } from '../services/razorpayCheckout';
 import { getPlanLock } from '../utils/planLock';
-import defaultBanner from '../assets/explore-plans-banner.png';
+import defaultBanner from '../assets/explore-plans-banner.jpg';
 
 // Short fallback poll — only kicks in if the backend's own /verify call
 // (fired the instant Razorpay Checkout's in-browser `handler` confirms a

@@ -5,7 +5,7 @@ import { useAuth, setDemoSession, markPaid, hasFullAccess } from '../hooks/useAu
 import { plansApi, paymentsApi, siteSettingsApi } from '../services/api';
 import { loadRazorpayCheckout } from '../services/razorpayCheckout';
 import { setInternalDevice } from '../analytics/internalTraffic';
-import defaultBanner from '../assets/explore-plans-banner.png';
+import defaultBanner from '../assets/explore-plans-banner.jpg';
 
 // India-only — any 10-digit number is accepted, no leading-digit restriction.
 const COUNTRY_CODE = '+91';

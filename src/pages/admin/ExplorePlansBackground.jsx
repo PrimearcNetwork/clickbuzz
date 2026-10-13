@@ -6,7 +6,7 @@ import { siteSettingsApi } from '../../services/api';
 // Explore Plans page. Two separate images so each device gets a properly
 // framed one: the desktop image is used on screens >= 768px, the mobile image
 // below that. If only one is uploaded, it's used on every device; with none,
-// the page shows its built-in default banner (src/assets/explore-plans-banner.png).
+// the page shows its built-in default banner (src/assets/explore-plans-banner.jpg).
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_SIZE_MB = 10; // matches MAX_UPLOAD_MB_BANNER on the backend
 

@@ -96,6 +96,14 @@ const fetchPayment = async (paymentId) => request('GET', `/payments/${paymentId}
 // handle from the moment the order was created.
 const fetchOrderPayments = async (orderId) => request('GET', `/orders/${orderId}/payments`);
 
+// Subscription charges are billed through Razorpay invoices — each invoice
+// carries both its subscription_id and the payment_id that paid it, which is
+// how a subscription's first charge is recovered when the browser's /verify
+// call never arrived (see reconcileSubscriptionFirstCharge).
+const fetchInvoice = async (invoiceId) => request('GET', `/invoices/${invoiceId}`);
+const fetchSubscriptionInvoices = async (subscriptionId) =>
+    request('GET', `/invoices?subscription_id=${encodeURIComponent(subscriptionId)}`);
+
 const sha256Hex = (str, secret) => crypto.createHmac('sha256', secret).update(str).digest('hex');
 
 // Verifies the signature Razorpay Checkout's client-side `handler` callback
@@ -145,6 +153,8 @@ module.exports = {
     cancelSubscription,
     fetchPayment,
     fetchOrderPayments,
+    fetchInvoice,
+    fetchSubscriptionInvoices,
     verifyPaymentSignature,
     verifySubscriptionSignature,
     verifyWebhookSignature,

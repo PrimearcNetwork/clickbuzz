@@ -10,6 +10,9 @@ const {
     reconcileOrderPayment,
     reconcilePendingPayment,
     reconcileSubscriptionAuth,
+    reconcileSubscriptionPaymentEvent,
+    recoverUnconfirmedSubscription,
+    handleSubscriptionActivated,
     handleSubscriptionCharged,
     handleSubscriptionStatusChange
 } = require('../services/paymentReconcile.service');
@@ -320,7 +323,7 @@ exports.getSubscriptionStatus = async (req, res) => {
             return res.status(400).json({ message: 'Invalid phone number' });
         }
 
-        const subscription = await Subscription.findOne({
+        let subscription = await Subscription.findOne({
             where: {
                 customer_phone: phone,
                 mandate_status: 'active',
@@ -328,6 +331,17 @@ exports.getSubscriptionStatus = async (req, res) => {
             },
             order: [['expires_at', 'DESC']]
         });
+
+        // A customer who paid but whose checkout was never confirmed (tab
+        // closed while approving in their UPI app) is recovered here, so
+        // they aren't sent back to /plans. Never blocks the lookup itself.
+        if (!subscription) {
+            const recovered = await recoverUnconfirmedSubscription(phone).catch((err) => {
+                console.error('Unconfirmed subscription recovery failed:', err.message);
+                return null;
+            });
+            if (recovered && new Date(recovered.expires_at) > new Date()) subscription = recovered;
+        }
 
         if (!subscription) {
             return res.json({ active: false });
@@ -359,12 +373,18 @@ exports.handleWebhook = async (req, res) => {
             case 'payment.failed': {
                 const paymentEntity = payload?.payment?.entity;
                 const orderId = paymentEntity?.order_id;
-                if (orderId) {
-                    const payment = await Payment.findOne({ where: { razorpay_order_id: orderId } });
-                    if (payment) {
-                        await reconcileOrderPayment(payment.txnid, paymentEntity.id);
-                    }
+                const payment = orderId ? await Payment.findOne({ where: { razorpay_order_id: orderId } }) : null;
+                if (payment) {
+                    await reconcileOrderPayment(payment.txnid, paymentEntity.id);
+                } else {
+                    // Subscription charge — its order id is Razorpay's own,
+                    // never stored on our row.
+                    await reconcileSubscriptionPaymentEvent(paymentEntity);
                 }
+                break;
+            }
+            case 'subscription.activated': {
+                await handleSubscriptionActivated(payload?.subscription?.entity);
                 break;
             }
             case 'subscription.charged': {

@@ -111,6 +111,15 @@ async function reconcilePendingPayment(payment) {
     } else if (payment.razorpay_order_id) {
         const list = await razorpayUtil.fetchOrderPayments(payment.razorpay_order_id);
         razorpayPayment = list?.items?.[0];
+    } else {
+        // Autopay checkout: the Payment row has neither id (the subscription
+        // flow never creates an order of ours) — recover through the
+        // Subscription row that points at it.
+        const subscription = await Subscription.findOne({ where: { last_payment_id: payment.id } });
+        if (subscription?.razorpay_subscription_id) {
+            const recovered = await reconcileSubscriptionFirstCharge(subscription);
+            if (recovered && recovered.status !== 'pending') return recovered;
+        }
     }
 
     if (!razorpayPayment) {
@@ -142,6 +151,89 @@ async function reconcileSubscriptionAuth(txnid, razorpaySubscriptionId, razorpay
     return payment;
 }
 
+// Completes a subscription's first (authorizing) charge when the browser's
+// /verify call never arrived — common with UPI Autopay on mobile, where the
+// customer approves in their UPI app and the Checkout tab is killed or
+// reloaded before its `handler` fires. Without this the checkout's Payment
+// row stayed 'pending' and mandate_status stayed 'created' forever, so a
+// customer Razorpay had already charged was sent back to /plans.
+// `razorpayPayment` comes from a webhook payload when available; otherwise
+// it's looked up via the subscription's paid invoice. Only ever promotes to
+// success — a declined attempt inside Checkout can still be retried with
+// another method, so it must not lock the row as 'failed' here.
+async function reconcileSubscriptionFirstCharge(subscription, razorpayPayment = null) {
+    if (!subscription.last_payment_id) return null;
+    const original = await Payment.findByPk(subscription.last_payment_id);
+    if (!original || original.payment_method !== 'RAZORPAY' || FINAL_STATUSES.includes(original.status)) {
+        return original;
+    }
+
+    let chargedPayment = razorpayPayment;
+    if (!chargedPayment) {
+        const invoices = await razorpayUtil.fetchSubscriptionInvoices(subscription.razorpay_subscription_id);
+        const paidInvoice = invoices?.items?.find((invoice) => invoice.status === 'paid' && invoice.payment_id);
+        if (!paidInvoice) {
+            await original.update({ last_verified_at: new Date() });
+            return original;
+        }
+        chargedPayment = await razorpayUtil.fetchPayment(paidInvoice.payment_id);
+    }
+
+    if (razorpayUtil.mapRazorpayStatus(chargedPayment.status) !== 'success') return original;
+
+    const payment = await applyPaymentResult(original.txnid, chargedPayment);
+    if (payment?.status === 'success') {
+        await subscription.update({ mandate_status: 'active' });
+        console.log(`Recovered first subscription charge: txnid=${original.txnid}, razorpaySubscriptionId=${subscription.razorpay_subscription_id}`);
+    }
+    return payment;
+}
+
+// Webhook `payment.captured`/`payment.failed` for a subscription charge —
+// those carry Razorpay's own invoice/order ids, never one stored on our
+// Payment row, so they're traced back through the invoice to the
+// Subscription and its checkout Payment.
+async function reconcileSubscriptionPaymentEvent(paymentEntity) {
+    if (!paymentEntity?.invoice_id || razorpayUtil.mapRazorpayStatus(paymentEntity.status) !== 'success') return;
+    const invoice = await razorpayUtil.fetchInvoice(paymentEntity.invoice_id);
+    if (!invoice?.subscription_id) return;
+    const subscription = await Subscription.findOne({ where: { razorpay_subscription_id: invoice.subscription_id } });
+    if (!subscription) return;
+    await reconcileSubscriptionFirstCharge(subscription, paymentEntity);
+}
+
+// Webhook `subscription.activated` — Razorpay's own confirmation that the
+// mandate is live and its first charge went through.
+async function handleSubscriptionActivated(subscriptionEntity) {
+    const subscription = await Subscription.findOne({ where: { razorpay_subscription_id: subscriptionEntity.id } });
+    if (!subscription) return;
+
+    await reconcileSubscriptionFirstCharge(subscription);
+    if (subscriptionEntity.status === 'active' && ['created', 'authenticated'].includes(subscription.mandate_status)) {
+        await subscription.update({ mandate_status: 'active' });
+    }
+}
+
+// Login-time recovery for a customer whose checkout was never confirmed
+// (see reconcileSubscriptionFirstCharge) — checks only their most recent
+// unconfirmed autopay checkout, throttled by its Payment's last_verified_at
+// so this public lookup can't hammer Razorpay.
+async function recoverUnconfirmedSubscription(customerPhone) {
+    const subscription = await Subscription.findOne({
+        where: { customer_phone: customerPhone, mandate_status: 'created' },
+        order: [['created_at', 'DESC']]
+    });
+    if (!subscription?.razorpay_subscription_id || !subscription.last_payment_id) return null;
+
+    const original = await Payment.findByPk(subscription.last_payment_id);
+    if (!original || original.status !== 'pending') return null;
+    const lastVerified = original.last_verified_at ? new Date(original.last_verified_at).getTime() : 0;
+    if (Date.now() - lastVerified <= VERIFY_THROTTLE_MS) return null;
+
+    const payment = await reconcileSubscriptionFirstCharge(subscription);
+    return payment?.status === 'success' ? subscription.reload() : null;
+}
+
 // Called by the webhook handler for `subscription.charged` — Razorpay itself
 // decided a recurring charge was due and already collected it; this just
 // records the resulting Payment row and advances the Subscription's billing
@@ -157,6 +249,16 @@ async function handleSubscriptionCharged({ subscriptionEntity, paymentEntity }) 
     // Idempotent — Razorpay can redeliver the same webhook.
     const existing = await Payment.findOne({ where: { razorpay_payment_id: paymentEntity.id } });
     if (existing) return;
+
+    // First charge of a new subscription whose /verify hasn't landed: it
+    // belongs to the checkout's own pending Payment row (expires_at already
+    // covers that first period) — not a renewal, so no new row and no
+    // extra period.
+    const original = subscription.last_payment_id ? await Payment.findByPk(subscription.last_payment_id) : null;
+    if (original && original.payment_method === 'RAZORPAY' && original.status === 'pending') {
+        await reconcileSubscriptionFirstCharge(subscription, paymentEntity);
+        return;
+    }
 
     const plan = await SubscriptionPlan.findByPk(subscription.plan_id);
     const newStatus = razorpayUtil.mapRazorpayStatus(paymentEntity.status);
@@ -185,7 +287,10 @@ async function handleSubscriptionCharged({ subscriptionEntity, paymentEntity }) 
             expires_at: new Date(base.getTime() + extendDays * 86400000),
             last_billed_at: new Date(),
             last_payment_id: payment.id,
-            failed_attempt_count: 0
+            failed_attempt_count: 0,
+            // A successful charge means the mandate is live, even if the
+            // activation never reached us.
+            ...(['created', 'authenticated', 'pending'].includes(subscription.mandate_status) ? { mandate_status: 'active' } : {})
         });
     } else {
         const nextCount = (subscription.failed_attempt_count || 0) + 1;
@@ -261,6 +366,9 @@ module.exports = {
     reconcileOrderPayment,
     reconcilePendingPayment,
     reconcileSubscriptionAuth,
+    reconcileSubscriptionPaymentEvent,
+    recoverUnconfirmedSubscription,
+    handleSubscriptionActivated,
     handleSubscriptionCharged,
     handleSubscriptionStatusChange
 };

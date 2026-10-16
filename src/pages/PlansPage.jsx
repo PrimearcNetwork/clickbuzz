@@ -384,7 +384,7 @@ const PlansPage = () => {
               <div
                 data-testid="payment-status-card"
                 data-status={paymentPhase}
-                className="flex flex-col items-center text-center gap-1 mb-4"
+                className="flex flex-col items-center text-center gap-1 mb-4 [text-shadow:0_1px_4px_rgba(0,0,0,0.9)]"
               >
                 <p className="text-white font-bold">
                   {paymentPhase === 'failed' && 'Payment failed'}

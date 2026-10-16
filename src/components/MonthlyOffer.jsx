@@ -18,8 +18,8 @@ export const MonthlyOfferScreen = ({ children }) => (
       decoding="async"
     />
     <div className="relative min-h-full flex flex-col justify-end px-4 pt-[32dvh] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-      <div className="auth-card-enter w-full max-w-md mx-auto rounded-3xl border border-white/20 border-t-2 border-t-[#ff4d1a] bg-white/10 backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.35)] px-4 pt-7 pb-6">
-        <h1 className="text-center text-white/90 font-bold text-[15px] leading-relaxed mb-6 px-2 drop-shadow">
+      <div className="auth-card-enter w-full max-w-md mx-auto rounded-3xl border border-white/25 border-t-2 border-t-[#ff4d1a] px-4 pt-7 pb-6">
+        <h1 className="text-center text-white font-bold text-[15px] leading-relaxed mb-6 px-2 [text-shadow:0_1px_4px_rgba(0,0,0,0.9)]">
           Unlock All Premium Content at Half the Price!{' '}
           <span className="text-[#22c55e] text-lg font-extrabold whitespace-nowrap">FLAT 50% OFF</span>
         </h1>
@@ -30,12 +30,12 @@ export const MonthlyOfferScreen = ({ children }) => (
 );
 
 export const MonthlyPlanBox = ({ price }) => (
-  <div className="mt-6 rounded-2xl border border-white/30 bg-white/15 px-6 py-4 flex items-start justify-between gap-3">
+  <div className="mt-6 rounded-2xl border border-white/40 px-6 py-4 [text-shadow:0_1px_3px_rgba(0,0,0,0.8)] flex items-start justify-between gap-3">
     <div>
-      <p className="text-white/90 text-sm mb-1">Monthly Plan</p>
+      <p className="text-white text-sm mb-1">Monthly Plan</p>
       <p className="flex items-baseline gap-2">
         <span className="text-white font-bold text-3xl">₹{price}</span>
-        <span className="text-white/70 text-xs line-through">Save {price}</span>
+        <span className="text-white/85 text-xs line-through">Save {price}</span>
       </p>
     </div>
     <span className="flex items-center gap-1 rounded-full bg-[#e11d2e] text-white text-[10px] font-bold px-3 py-1.5 whitespace-nowrap">

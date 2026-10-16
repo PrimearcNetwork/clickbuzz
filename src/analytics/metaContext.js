@@ -5,6 +5,8 @@
 // its private localStorage format would be fragile. These IDs exist only to
 // give Meta's own event stream internal consistency, not to cross-reference
 // against the first-party analytics DB.
+import { randomUUID } from '../utils/uuid';
+
 const VISITOR_ID_KEY = 'clickbuz_meta_visitor_id';
 const SESSION_ID_KEY = 'clickbuz_meta_session_id';
 
@@ -12,13 +14,13 @@ function getOrCreateId(storage, key) {
     try {
         let id = storage.getItem(key);
         if (!id) {
-            id = crypto.randomUUID();
+            id = randomUUID();
             storage.setItem(key, id);
         }
         return id;
     } catch {
         // storage full/disabled — fall back to a per-call id rather than throwing.
-        return crypto.randomUUID();
+        return randomUUID();
     }
 }
 

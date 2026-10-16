@@ -12,6 +12,9 @@ import { loadRazorpayCheckout } from '../services/razorpayCheckout';
 import { getPlanLock } from '../utils/planLock';
 import defaultBanner from '../assets/explore-plans-banner.png';
 import planLockBanner from '../assets/plan-lock-banner.jpg';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { MonthlyOfferScreen, MonthlyPlanBox } from '../components/MonthlyOffer';
+import { isMonthlyOfferFlow, monthlyPriceOf, OFFER_BUTTON_CLASS } from '../utils/monthlyOffer';
 
 // Short fallback poll — only kicks in if the backend's own /verify call
 // (fired the instant Razorpay Checkout's in-browser `handler` confirms a
@@ -58,6 +61,8 @@ const PlansPage = () => {
   // subscription-status check and hands it over here via navigation state,
   // so this page can skip its own /api/subscription-plans round trip.
   const prefetchedPlans = location.state?.plans;
+  const isMobile = useIsMobile();
+  const isMonthlyOffer = isMonthlyOfferFlow(isMobile);
   const [plans, setPlans] = useState(prefetchedPlans || []);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [loading, setLoading] = useState(!(prefetchedPlans && prefetchedPlans.length > 0));
@@ -289,6 +294,23 @@ const PlansPage = () => {
     }
   };
 
+  // Monthly campaign on mobile: the login screen's SUBSCRIBE NOW already chose
+  // the plan, so open Checkout as soon as the plan and phone are ready — once
+  // per visit; a dismissed/failed checkout waits for "Try Again".
+  const autoPayStarted = useRef(false);
+  useEffect(() => {
+    if (!location.state?.autoPay || !isMonthlyOffer || autoPayStarted.current) return undefined;
+    if (!selectedPlan || !customerPhone || paymentPhase !== 'idle') return undefined;
+    const timer = setTimeout(() => {
+      autoPayStarted.current = true;
+      handlePayNow();
+    }, 0);
+    return () => clearTimeout(timer);
+    // handlePayNow is recreated every render; the ref guard makes this a
+    // one-shot regardless.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMonthlyOffer, selectedPlan, customerPhone, paymentPhase]);
+
   // Lets the user resolve a 'timeout' state immediately instead of waiting
   // for pollUntilResolved's next tick — same manual escape hatch the old
   // polling-based flow had.
@@ -324,6 +346,96 @@ const PlansPage = () => {
   const bannerSrc = planLocked
     ? planLockBanner
     : background.desktop || background.mobile || defaultBanner;
+
+  // Monthly campaign on mobile: same artwork + glass card as the login
+  // screen instead of the Explore Plans page. Payment logic is shared.
+  if (isMonthlyOffer) {
+    const inFlight = ['creating', 'checkout_open', 'confirming'].includes(paymentPhase);
+    const ended = ['failed', 'cancelled', 'timeout', 'error'].includes(paymentPhase);
+
+    return (
+      <MonthlyOfferScreen>
+        {paymentPhase === 'success' ? (
+          <div
+            data-testid="payment-status-card"
+            data-status="success"
+            className="flex flex-col items-center text-center py-4 gap-2 auth-pop-in"
+          >
+            <CheckCircle2 className="text-[#22c55e]" size={56} />
+            <p className="text-white text-xl font-bold">Payment successful</p>
+            <p className="text-white/80 text-sm">Your subscription is now active. Taking you home…</p>
+          </div>
+        ) : loading ? (
+          <div className="flex justify-center py-6">
+            <Loader2 className="animate-spin text-white" size={28} />
+          </div>
+        ) : noPlanAvailable ? (
+          <div data-testid="plans-load-error" className="flex flex-col items-center text-center gap-3">
+            <AlertTriangle className="text-yellow-400" size={32} />
+            <p className="text-white font-bold">Couldn&apos;t load payment details</p>
+            <p className="text-white/80 text-sm mb-2">Please check your connection and try again.</p>
+            <button onClick={fetchPlans} data-testid="retry-plans-button" className={OFFER_BUTTON_CLASS}>
+              TRY AGAIN
+            </button>
+          </div>
+        ) : (
+          <>
+            {(paymentPhase === 'failed' || paymentPhase === 'cancelled' || paymentPhase === 'timeout') && (
+              <div
+                data-testid="payment-status-card"
+                data-status={paymentPhase}
+                className="flex flex-col items-center text-center gap-1 mb-4"
+              >
+                <p className="text-white font-bold">
+                  {paymentPhase === 'failed' && 'Payment failed'}
+                  {paymentPhase === 'cancelled' && 'Payment cancelled'}
+                  {paymentPhase === 'timeout' && 'Still confirming your payment'}
+                </p>
+                <p className="text-white/80 text-sm">
+                  {paymentPhase === 'failed' && 'Your payment could not be completed. You have not been charged.'}
+                  {paymentPhase === 'cancelled' && 'You closed the payment window before completing payment.'}
+                  {paymentPhase === 'timeout' && 'This is taking longer than usual.'}
+                </p>
+                {paymentPhase === 'timeout' && (
+                  <button
+                    onClick={() => handleCheckStatusNow(txnid)}
+                    data-testid="check-status-button"
+                    className="mt-1 text-white text-sm font-semibold underline cursor-pointer"
+                  >
+                    Check status now
+                  </button>
+                )}
+              </div>
+            )}
+
+            {errorMsg && (
+              <p data-testid="payment-error-message" className="text-red-300 text-sm text-center mb-4">{errorMsg}</p>
+            )}
+
+            <button
+              onClick={handlePayNow}
+              disabled={inFlight || !selectedPlan}
+              data-testid={ended ? 'try-again-button' : 'pay-now-button'}
+              className={OFFER_BUTTON_CLASS}
+            >
+              {inFlight && <Loader2 className="animate-spin" size={18} />}
+              {paymentPhase === 'creating' && 'Starting payment…'}
+              {paymentPhase === 'checkout_open' && 'Waiting for payment…'}
+              {paymentPhase === 'confirming' && 'Confirming payment…'}
+              {ended && 'TRY AGAIN'}
+              {paymentPhase === 'idle' && 'SUBSCRIBE NOW'}
+            </button>
+
+            <MonthlyPlanBox price={monthlyPriceOf(plans)} />
+
+            <p className="text-white/70 text-[11px] text-center mt-4 leading-relaxed">
+              Renews automatically via UPI Autopay. You can cancel the mandate anytime from your UPI app.
+            </p>
+          </>
+        )}
+      </MonthlyOfferScreen>
+    );
+  }
 
   return (
     <div className="w-full bg-black min-h-[calc(100vh-80px)] flex flex-col items-center pt-16 md:pt-20 pb-12">

@@ -8,6 +8,9 @@ import { setInternalDevice } from '../analytics/internalTraffic';
 import { getPlanLock } from '../utils/planLock';
 import defaultBanner from '../assets/explore-plans-banner.png';
 import planLockBanner from '../assets/plan-lock-banner.jpg';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { MonthlyOfferScreen, MonthlyPlanBox } from '../components/MonthlyOffer';
+import { isMonthlyOfferFlow, monthlyPriceOf, OFFER_BUTTON_CLASS } from '../utils/monthlyOffer';
 
 // India-only — any 10-digit number is accepted, no leading-digit restriction.
 const COUNTRY_CODE = '+91';
@@ -23,6 +26,7 @@ const LoginPage = () => {
   const [plans, setPlans] = useState(null);
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
+  const isMobile = useIsMobile();
 
   // Same banner as the Explore Plans page (PlansPage.jsx): the admin-uploaded
   // desktop/mobile images from Admin → Plans → "Explore Plans Banner" when
@@ -61,6 +65,7 @@ const LoginPage = () => {
   // Visitors from weekly./monthly.clickbuz.in (utils/planLock.js) always get
   // the campaign banner, even when an admin banner is uploaded.
   const planLocked = getPlanLock() !== null;
+  const isMonthlyOffer = isMonthlyOfferFlow(isMobile);
   const bannerSrc = planLocked
     ? planLockBanner
     : banner.desktop || banner.mobile || defaultBanner;
@@ -124,9 +129,56 @@ const LoginPage = () => {
     navigate('/plans', {
       state: {
         plans: plansResult.status === 'fulfilled' ? plansResult.value : undefined,
+        // Monthly campaign on mobile: SUBSCRIBE NOW already chose the plan,
+        // so /plans opens Razorpay Checkout straight away.
+        autoPay: isMonthlyOffer,
       },
     });
   };
+
+  // monthly.clickbuz.in on a phone: full-screen campaign artwork with a
+  // glass sign-in card over it. Desktop and every other case keep the
+  // standard card below.
+  if (isMonthlyOffer) {
+    return (
+      <MonthlyOfferScreen>
+        <form onSubmit={handleProceed}>
+          <label htmlFor="monthly-phone" className="block text-white font-bold text-sm tracking-widest mb-2.5 drop-shadow">
+            MOBILE NUMBER
+          </label>
+          <div className="flex items-stretch rounded-xl border border-[#e11d2e] bg-white/10 overflow-hidden mb-4">
+            <span className="flex items-center px-4 text-white text-lg border-r border-[#e11d2e] bg-white/10 shrink-0">
+              {COUNTRY_CODE}
+            </span>
+            <input
+              id="monthly-phone"
+              type="tel"
+              inputMode="numeric"
+              placeholder="10-digit mobile number"
+              className="w-full min-w-0 bg-transparent text-white text-base px-4 py-4 outline-none placeholder-white/90 tracking-wide"
+              value={phoneDigits}
+              onChange={(e) => setPhoneDigits(e.target.value.replace(/\D/g, '').slice(0, 10))}
+              maxLength={10}
+              autoFocus
+            />
+          </div>
+
+          <button type="submit" disabled={!valid || loading} className={OFFER_BUTTON_CLASS}>
+            {loading ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                Please wait…
+              </>
+            ) : (
+              'SUBSCRIBE NOW'
+            )}
+          </button>
+        </form>
+
+        <MonthlyPlanBox price={monthlyPriceOf(plans)} />
+      </MonthlyOfferScreen>
+    );
+  }
 
   return (
     <div className="min-h-dvh bg-bg-dark flex items-center justify-center px-4 py-6 sm:py-10">

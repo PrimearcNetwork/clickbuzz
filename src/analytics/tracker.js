@@ -11,6 +11,7 @@
 // (see backend/services/analytics/eventBuffer.service.js).
 
 import { isInternalDevice } from './internalTraffic';
+import { randomUUID } from '../utils/uuid';
 
 const COLLECT_ENDPOINT = `${import.meta.env.VITE_API_URL}/api/analytics/collect`;
 
@@ -51,7 +52,7 @@ function safeSet(key, value) {
 function getOrCreateVisitorId() {
     let id = safeGet(VISITOR_KEY);
     if (!id) {
-        id = crypto.randomUUID();
+        id = randomUUID();
         safeSet(VISITOR_KEY, id);
     }
     return id;
@@ -82,7 +83,7 @@ function getOrCreateSession() {
         writeSessionState(stored);
         return { sessionId: stored.sessionId, startedAt: stored.startedAt, isNew: false };
     }
-    const sessionId = crypto.randomUUID();
+    const sessionId = randomUUID();
     const state = { sessionId, startedAt: now, lastActivityAt: now };
     writeSessionState(state);
     return { sessionId, startedAt: now, isNew: true };

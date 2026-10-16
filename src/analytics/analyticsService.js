@@ -6,6 +6,7 @@
 // keeps working exactly as it does now.
 import { buildMetaContext } from './metaContext';
 import { isInternalDevice } from './internalTraffic';
+import { randomUUID } from '../utils/uuid';
 
 const providers = new Map();
 
@@ -23,7 +24,7 @@ function resolveTargets(options) {
 // mirroring possible without a redesign (Pixel + CAPI events sharing the
 // same eventID are deduped by Meta automatically).
 function buildDispatchContext(extra = {}) {
-    return { ...buildMetaContext(), eventId: crypto.randomUUID(), ...extra };
+    return { ...buildMetaContext(), eventId: randomUUID(), ...extra };
 }
 
 export function trackPageView(url, title, options = {}) {

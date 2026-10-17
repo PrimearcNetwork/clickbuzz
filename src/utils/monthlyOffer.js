@@ -11,5 +11,5 @@ export const monthlyPriceOf = (plans) => {
 
 export const OFFER_BUTTON_CLASS =
   'w-full py-4 rounded-xl font-extrabold text-white text-base transition-all flex items-center justify-center gap-2 ' +
-  'bg-[#e11d2e] shadow-lg shadow-red-900/40 active:scale-[0.98] ' +
-  'disabled:bg-[#e11d2e]/60 disabled:shadow-none disabled:active:scale-100 disabled:cursor-not-allowed';
+  'bg-brand hover:bg-brand-hover shadow-lg shadow-brand/30 active:scale-[0.98] ' +
+  'disabled:bg-brand/60 disabled:shadow-none disabled:active:scale-100 disabled:cursor-not-allowed';
